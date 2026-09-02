@@ -50,7 +50,10 @@ const config = [
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
+    // middleware.ts entra aqui aunque no sea UI: corre en el runtime Edge,
+    // donde Prisma no funciona, y es un lugar tentador para colar una
+    // consulta "rapida" de autorizacion que deberia vivir en lib/scope.
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "middleware.ts"],
     rules: fronteraDeDatos,
   },
 ];
