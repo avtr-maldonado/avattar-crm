@@ -1,62 +1,161 @@
 import { requireSession } from "@/lib/auth/session";
-import { listOpportunities, sumOpportunityAmounts } from "@/lib/scope";
-import { formatPercent, formatUSD, toClient, type Money } from "@/lib/money";
-import { weightedTotal } from "@/lib/domain/pipeline";
-import { computeRiskFlags, ETIQUETA_BANDERA } from "@/lib/domain/riskFlags";
-import { getCommercialPolicy } from "@/lib/policy";
+import { listOpportunities } from "@/lib/scope";
+import { listPipelines, pipelinePorOmision } from "@/lib/scope/pipelines";
+import { getCommercialPolicy, getCountry } from "@/lib/policy";
+import { formatPercent, formatUSD, sum, toClient } from "@/lib/money";
+import { openTotal, weightedAmount, weightedTotal } from "@/lib/domain/pipeline";
+import { computeRiskFlags } from "@/lib/domain/riskFlags";
+import { parseFilters, resolvePeriod, toWhere } from "@/lib/filters";
 import { BarraSuperior } from "@/components/ui/BarraSuperior";
+import { Boton, ControlSegmentado, StatTile } from "@/components/ui/primitivas";
+import { TableroKanban, type ColumnaKanban } from "@/components/pipeline/TableroKanban";
+import type { DatosTarjeta } from "@/components/pipeline/TarjetaOportunidad";
+import { TablaOportunidades } from "@/components/pipeline/TablaOportunidades";
 
 /**
  * P-01 · Pipeline de oportunidades.
  *
- * **Esta es una versión mínima de E0**, no la pantalla de E1: falta el kanban,
- * la barra de filtros, el arrastre entre etapas y las vistas guardadas. Existe
- * para probar la cadena completa de extremo a extremo —sesión, alcance por rol,
- * selectores por permiso, cálculo de banderas y formateo de dinero— contra los
- * datos reales del seed.
+ * La pantalla principal del sistema: la primera pregunta que un vendedor y un
+ * gerente se hacen todos los días.
  *
- * Lo que ya cumple y no debe perderse al construir E1:
+ * Lo que ya cumple y no debe perderse:
  *
- *   - Los datos llegan por `lib/scope`, nunca por Prisma directo (INV-01).
- *   - Los indicadores se calculan sobre el conjunto YA acotado: para un
- *     Vendedor son los suyos, nunca el total de la oficina, ni por agregación
- *     (§2.3).
+ *   - Los datos llegan por `lib/scope` (INV-01) y los filtros se componen
+ *     DESPUÉS del alcance, nunca antes (AC-25).
+ *   - Los indicadores se calculan sobre el conjunto ya acotado. Para un
+ *     Vendedor son los suyos: nunca ve el total de la oficina, ni por
+ *     agregación (§2.3).
  *   - Las banderas se calculan, no se leen de un campo (INV-11).
- *   - Las cifras van con `tabular` y el margen se pinta verde en o sobre el
- *     piso, coral debajo (§13.1).
+ *   - La vista vive en la URL (INV-10): la pantalla es compartible y el botón
+ *     de regresar funciona.
+ *
+ * Lo que falta de E1: el arrastre entre etapas con evaluación de compuertas, la
+ * barra de filtros completa, las vistas guardadas y el panel de oportunidades
+ * en riesgo para gerencia. El embudo es Fase 2.
  */
-export default async function PipelinePage() {
-  const session = await requireSession();
+const VISTAS = [
+  { valor: "kanban", etiqueta: "Kanban" },
+  { valor: "tabla", etiqueta: "Tabla" },
+  { valor: "embudo", etiqueta: "Embudo", deshabilitada: true },
+] as const;
 
-  const [oportunidades, agregado, politica] = await Promise.all([
-    listOpportunities(session, { orderBy: [{ amount: "desc" }] }),
-    sumOpportunityAmounts(session, { status: "ABIERTA" }),
-    getCommercialPolicy(session.countryCodes[0] ?? "MX"),
+type Vista = "kanban" | "tabla";
+
+export default async function PipelinePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const session = await requireSession();
+  const params = await searchParams;
+
+  // Los filtros viven en la URL. Se normalizan a `URLSearchParams` porque es lo
+  // que `lib/filters` consume, y porque un parámetro repetido —dos etapas, tres
+  // vendedores— llega como arreglo.
+  const urlParams = new URLSearchParams();
+  for (const [clave, valor] of Object.entries(params)) {
+    for (const uno of Array.isArray(valor) ? valor : valor ? [valor] : []) {
+      urlParams.append(clave, uno);
+    }
+  }
+
+  const vista: Vista = urlParams.get("vista") === "tabla" ? "tabla" : "kanban";
+  const paisActivo = session.countryCodes[0] ?? "MX";
+
+  const [pipelines, politica, pais] = await Promise.all([
+    listPipelines(session),
+    getCommercialPolicy(paisActivo),
+    getCountry(paisActivo),
   ]);
 
-  const abiertas = oportunidades.filter((o) => o.status === "ABIERTA");
-  const ponderado = weightedTotal(abiertas);
-  const ahora = new Date();
+  const pipeline = pipelinePorOmision(pipelines, session);
+  const filtros = parseFilters(urlParams, session);
+  const opciones = { fiscalYearStartMonth: pais.fiscalYearStartMonth };
 
+  const oportunidades = await listOpportunities(session, {
+    where: toWhere(filtros, session, opciones),
+    orderBy: [{ amount: "desc" }],
+  });
+
+  const ahora = new Date();
   const conBanderas = oportunidades.map((o) => ({
     ...o,
     banderas: computeRiskFlags(o, o.stage, politica, ahora),
   }));
+
+  const abiertas = conBanderas.filter((o) => o.status === "ABIERTA");
   const enRiesgo = conBanderas.filter((o) => o.banderas.length > 0);
 
-  // §13.5 · el subtítulo lleva conteos y totales: es lo que convierte un título
-  // en información. Para un Vendedor son SUS cifras, nunca las de la oficina.
-  const subtitulo = [
-    `${abiertas.length} abiertas`,
-    formatUSD(agregado.total ?? "0"),
-    `ponderado ${formatUSD(ponderado)}`,
-  ].join(" · ");
+  // §10.2 · el cierre del trimestre mira `expectedCloseDate`; el avance de
+  // cuota miraría `actualCloseDate`. Mezclarlas produce coberturas absurdas al
+  // final del trimestre.
+  const trimestre = resolvePeriod("ESTE_TRIMESTRE", pais.fiscalYearStartMonth, ahora)!;
+  const cierraEnTrimestre = abiertas.filter(
+    (o) =>
+      o.expectedCloseDate >= (trimestre.from ?? new Date(0)) &&
+      o.expectedCloseDate <= trimestre.to,
+  );
+
+  const tarjetas = conBanderas.map(
+    (o): DatosTarjeta => ({
+      id: o.id,
+      folio: o.folio,
+      nombre: o.name,
+      organizacion: o.organization.name,
+      importe: formatUSD(o.amount),
+      margen: o.grossMargin ? formatPercent(toClient(o.grossMargin)) : null,
+      margenBajoElPiso: o.grossMargin ? o.grossMargin.lt(politica.marginFloor) : false,
+      meddicScore: o.meddicScore,
+      cierre: FORMATO_FECHA.format(o.expectedCloseDate),
+      propietario: { nombre: o.owner.name, iniciales: o.owner.initials },
+      banderas: o.banderas,
+    }),
+  );
+
+  const porId = new Map(tarjetas.map((t) => [t.id, t]));
+
+  // Se agrupa UNA vez por etapa. Filtrar dentro del bucle de columnas recorre
+  // la lista completa por cada etapa: con 14 oportunidades da igual, con las
+  // 500 del requisito no funcional §13, no.
+  const porEtapa = new Map<string, typeof conBanderas>();
+  for (const o of conBanderas) {
+    const lista = porEtapa.get(o.stage.id);
+    if (lista) lista.push(o);
+    else porEtapa.set(o.stage.id, [o]);
+  }
+
+  // Todas las etapas del pipeline, incluidas las vacías: una columna que
+  // desaparece rompe el mapa mental del proceso.
+  const columnas: ColumnaKanban[] = (pipeline?.stages ?? []).map((etapa) => {
+    const deLaEtapa = porEtapa.get(etapa.id) ?? [];
+    return {
+      etapaId: etapa.id,
+      nombre: etapa.name,
+      probabilidad: formatPercent(toClient(etapa.probability), 0),
+      total: formatUSD(openTotal(deLaEtapa)),
+      ponderado: formatUSD(
+        sum(deLaEtapa.map((o) => weightedAmount(o.amount, etapa.probability))),
+      ),
+      esCierre: etapa.isClosing,
+      oportunidades: deLaEtapa.map((o) => porId.get(o.id)!),
+    };
+  });
+
+  const hrefVista = (v: string) => {
+    const p = new URLSearchParams(urlParams);
+    p.set("vista", v);
+    return `/oportunidades?${p.toString()}`;
+  };
 
   return (
     <>
       <BarraSuperior
-        titulo="Pipeline"
-        subtitulo={subtitulo}
+        titulo={pipeline ? `Pipeline · ${pipeline.name}` : "Pipeline"}
+        subtitulo={[
+          `${abiertas.length} abiertas`,
+          formatUSD(openTotal(abiertas)),
+          `ponderado ${formatUSD(weightedTotal(abiertas))}`,
+        ].join(" · ")}
         usuario={{
           nombre: session.name,
           iniciales: iniciales(session.name),
@@ -65,138 +164,82 @@ export default async function PipelinePage() {
         }}
       />
 
-      <div className="flex-1 overflow-y-auto p-8">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Indicador etiqueta="Valor abierto" valor={formatUSD(agregado.total ?? "0")} />
-        <Indicador etiqueta="Ponderado" valor={formatUSD(ponderado)} />
-        <Indicador etiqueta="Abiertas" valor={String(abiertas.length)} />
-        <Indicador
-          etiqueta="En riesgo"
-          valor={String(enRiesgo.length)}
-          alerta={enRiesgo.length > 0}
-        />
-      </div>
+      <div className="flex-1 overflow-y-auto px-8 py-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <ControlSegmentado opciones={VISTAS} activa={vista} hrefDe={hrefVista} />
+          <div className="ml-auto">
+            <Boton href="/oportunidades/nueva">+ Nueva oportunidad</Boton>
+          </div>
+        </div>
 
-      {oportunidades.length === 0 ? (
-        <EstadoVacio />
-      ) : (
-        <table className="mt-8 w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-borde-fuerte text-left">
-              <Th>Folio</Th>
-              <Th>Oportunidad</Th>
-              <Th>Etapa</Th>
-              <Th className="text-right">Importe</Th>
-              <Th className="text-right">Margen</Th>
-              <Th className="text-right">MEDDIC</Th>
-              <Th>Dueño</Th>
-              <Th>Riesgo</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {conBanderas.map((o) => (
-              <tr key={o.id} className="border-b border-borde hover:bg-superficie-sutil">
-                <td className="py-2 pr-3 font-mono text-xs text-texto-tenue">{o.folio}</td>
-                <td className="py-2 pr-3">
-                  <div className="font-medium text-texto-titulo">{o.name}</div>
-                  <div className="text-xs text-texto-tenue">{o.organization.name}</div>
-                </td>
-                <td className="py-2 pr-3 text-texto-cuerpo">{o.stage.name}</td>
-                <td className="tabular py-2 pr-3 text-right">{formatUSD(o.amount)}</td>
-                <td className="tabular py-2 pr-3 text-right">
-                  <Margen valor={o.grossMargin} piso={politica.marginFloor} />
-                </td>
-                <td className="tabular py-2 pr-3 text-right">
-                  <PuntajeMeddic valor={o.meddicScore} />
-                </td>
-                <td className="py-2 pr-3 text-xs text-texto-tenue">{o.owner.initials}</td>
-                <td className="py-2">
-                  <div className="flex flex-wrap gap-1">
-                    {o.banderas.map((b) => (
-                      <span
-                        key={b}
-                        className="rounded-pill bg-coral/10 px-2 py-0.5 text-xs text-coral"
-                      >
-                        {ETIQUETA_BANDERA[b]}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+        <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-5">
+          <StatTile
+            etiqueta="Valor abierto"
+            valor={formatUSD(openTotal(abiertas))}
+            subtexto={`${abiertas.length} oportunidades`}
+          />
+          <StatTile
+            etiqueta="Ponderado"
+            valor={formatUSD(weightedTotal(abiertas))}
+            subtexto="por probabilidad de etapa"
+            tono="acento"
+          />
+          <StatTile
+            etiqueta="Cierre del trimestre"
+            valor={formatUSD(openTotal(cierraEnTrimestre))}
+            subtexto={`${cierraEnTrimestre.length} con cierre estimado`}
+          />
+          <StatTile
+            etiqueta="Piso de margen"
+            valor={formatPercent(toClient(politica.marginFloor), 0)}
+            subtexto="política del país"
+            tono="exito"
+          />
+          <StatTile
+            etiqueta="En riesgo"
+            valor={formatUSD(openTotal(enRiesgo))}
+            subtexto={`${enRiesgo.length} con bandera activa`}
+            tono={enRiesgo.length > 0 ? "peligro" : "neutro"}
+          />
+        </div>
+
+        <div className="mt-6">
+          {vista === "kanban" ? (
+            <TableroKanban
+              columnas={columnas}
+              accionVacio={
+                <>
+                  <Boton href="/oportunidades" variante="secundario">
+                    Limpiar filtros
+                  </Boton>
+                  <Boton href="/oportunidades/nueva">Nueva oportunidad</Boton>
+                </>
+              }
+            />
+          ) : (
+            <TablaOportunidades
+              oportunidades={tarjetas}
+              etapaDe={Object.fromEntries(conBanderas.map((o) => [o.id, o.stage.name]))}
+            />
+          )}
+        </div>
       </div>
     </>
   );
 }
 
-/** Las iniciales del avatar. Dos letras: nombre y primer apellido. */
+const FORMATO_FECHA = new Intl.DateTimeFormat("es-MX", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+/** Las iniciales del avatar: nombre y primer apellido. */
 function iniciales(nombre: string): string {
   return nombre
     .split(/\s+/)
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase() ?? "")
     .join("");
-}
-
-function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <th className={`eyebrow pb-2 pr-3 font-medium ${className}`}>{children}</th>;
-}
-
-function Indicador({
-  etiqueta,
-  valor,
-  alerta = false,
-}: {
-  etiqueta: string;
-  valor: string;
-  alerta?: boolean;
-}) {
-  return (
-    <div className="rounded-md border border-borde bg-superficie-tarjeta p-4">
-      <p className="eyebrow">{etiqueta}</p>
-      <p
-        className={`tabular mt-1 text-h4 font-semibold ${alerta ? "text-coral" : "text-texto-titulo"}`}
-      >
-        {valor}
-      </p>
-    </div>
-  );
-}
-
-/**
- * §13.1 · verde en o sobre el piso, coral debajo.
- *
- * «Es la señal más importante de toda la interfaz.» El piso entra por
- * parámetro, desde `CommercialPolicy`: no hay un 0.20 escrito aquí (INV-05).
- */
-function Margen({ valor, piso }: { valor: Money | null; piso: Money }) {
-  if (valor === null) return <span className="text-texto-tenue">—</span>;
-  return (
-    <span className={valor.lt(piso) ? "font-semibold text-coral" : "text-exito"}>
-      {formatPercent(toClient(valor))}
-    </span>
-  );
-}
-
-/** §7.4 · rojo bajo 50, ámbar 50–69, verde 70 o más. */
-function PuntajeMeddic({ valor }: { valor: number | null }) {
-  if (valor === null) return <span className="text-texto-tenue">—</span>;
-  const color = valor >= 70 ? "text-exito" : valor >= 50 ? "text-navy-500" : "text-coral";
-  return <span className={color}>{valor}</span>;
-}
-
-/** §11 · el estado vacío siempre propone la acción siguiente. Nunca en blanco. */
-function EstadoVacio() {
-  return (
-    <div className="mt-8 rounded-md border border-dashed border-borde-fuerte p-12 text-center">
-      <p className="font-medium text-texto-titulo">No hay oportunidades que puedas ver</p>
-      <p className="mx-auto mt-2 max-w-md text-sm text-texto-tenue">
-        Si esperabas ver algo aquí, revisa que tu usuario tenga oportunidades
-        asignadas: la visibilidad sigue al propietario, no a quien las creó.
-      </p>
-    </div>
-  );
 }

@@ -1,4 +1,4 @@
-import type { CountryCode, OpportunityStatus, Role } from "@/lib/dto";
+import type { CountryCode, OpportunityStatus, RiskFlag, Role } from "@/lib/dto";
 
 /**
  * Los textos visibles · INV-14.
@@ -30,4 +30,17 @@ export const ETIQUETA_ESTATUS: Record<OpportunityStatus, string> = {
   ABIERTA: "Abierta",
   GANADA: "Ganada",
   PERDIDA: "Perdida",
+};
+
+/**
+ * INV-11 · las banderas se calculan, no se capturan. Estas son sus etiquetas.
+ *
+ * Viven aquí y no en `lib/domain/riskFlags` porque ese módulo es lógica pura y
+ * se prueba sin nada de presentación; mezclarle textos visibles lo ataría al
+ * idioma de la interfaz.
+ */
+export const ETIQUETA_BANDERA: Record<RiskFlag, string> = {
+  SIN_ACTIVIDAD: "Sin actividad",
+  ESTANCADA: "Estancada",
+  MARGEN_BAJO: "Margen bajo",
 };

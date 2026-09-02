@@ -50,10 +50,3 @@ export function computeRiskFlags(
 
   return banderas;
 }
-
-/** Texto para la pastilla de la tarjeta y el panel de riesgo. */
-export const ETIQUETA_BANDERA: Record<RiskFlag, string> = {
-  SIN_ACTIVIDAD: "Sin actividad futura",
-  ESTANCADA: "Estancada",
-  MARGEN_BAJO: "Margen bajo el piso",
-};
