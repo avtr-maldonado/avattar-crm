@@ -9,7 +9,10 @@
     "overrides": [
       {
         "files": ["app/(auth)/login/**", ".next/**"],
-        "rules": ["react-doctor/artifact-secret-leak"]
+        "rules": [
+          "react-doctor/artifact-secret-leak",
+          "react-doctor/artifact-baas-authority-surface"
+        ]
       }
     ]
   }

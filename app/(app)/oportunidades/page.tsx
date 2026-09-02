@@ -4,6 +4,7 @@ import { formatPercent, formatUSD, toClient, type Money } from "@/lib/money";
 import { weightedTotal } from "@/lib/domain/pipeline";
 import { computeRiskFlags, ETIQUETA_BANDERA } from "@/lib/domain/riskFlags";
 import { getCommercialPolicy } from "@/lib/policy";
+import { BarraSuperior } from "@/components/ui/BarraSuperior";
 
 /**
  * P-01 · Pipeline de oportunidades.
@@ -43,17 +44,29 @@ export default async function PipelinePage() {
   }));
   const enRiesgo = conBanderas.filter((o) => o.banderas.length > 0);
 
-  return (
-    <div className="p-8">
-      <header>
-        <p className="eyebrow">Comercial</p>
-        <h1 className="mt-1 text-h3 font-semibold">Oportunidades</h1>
-        <p className="mt-1 text-sm text-texto-tenue">
-          {oportunidades.length} visibles para {session.name}
-        </p>
-      </header>
+  // §13.5 · el subtítulo lleva conteos y totales: es lo que convierte un título
+  // en información. Para un Vendedor son SUS cifras, nunca las de la oficina.
+  const subtitulo = [
+    `${abiertas.length} abiertas`,
+    formatUSD(agregado.total ?? "0"),
+    `ponderado ${formatUSD(ponderado)}`,
+  ].join(" · ");
 
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+  return (
+    <>
+      <BarraSuperior
+        titulo="Pipeline"
+        subtitulo={subtitulo}
+        usuario={{
+          nombre: session.name,
+          iniciales: iniciales(session.name),
+          rol: session.role,
+          paises: session.countryCodes,
+        }}
+      />
+
+      <div className="flex-1 overflow-y-auto p-8">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Indicador etiqueta="Valor abierto" valor={formatUSD(agregado.total ?? "0")} />
         <Indicador etiqueta="Ponderado" valor={formatUSD(ponderado)} />
         <Indicador etiqueta="Abiertas" valor={String(abiertas.length)} />
@@ -114,8 +127,18 @@ export default async function PipelinePage() {
           </tbody>
         </table>
       )}
-    </div>
+      </div>
+    </>
   );
+}
+
+/** Las iniciales del avatar. Dos letras: nombre y primer apellido. */
+function iniciales(nombre: string): string {
+  return nombre
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
 function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
