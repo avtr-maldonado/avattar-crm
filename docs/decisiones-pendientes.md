@@ -81,15 +81,14 @@ de funcionalidades v2, que sigue siendo material de negocio válido.
 
 | Tema | Catálogo v2 | Spec v2.0 | Se implementó |
 |---|---|---|---|
-| Roles | 7: incluye Finanzas y Marketing (`AV-1101`) | 5 (§5.1) | **5.** Si Finanzas necesita ver facturación esperada y Marketing el origen de las oportunidades, hay que decidir si son roles o permisos sobre los existentes |
+| Roles | 7: incluye Finanzas y Marketing (`AV-1101`) | 5 (§5.1) | **5. Cerrado el 1-sep-2026** (`Q-12`): se conservan los cinco para mantener la implementación simple. Si Finanzas o Marketing necesitan acceso, será como permisos sobre los roles existentes, no como roles nuevos |
 | Prospectos (Leads) | Módulo completo, Fase 2 (§10b, `PR-01` a `PR-05`) | No aparece, ni siquiera en §16 | **Fuera.** El esquema v1 ya tenía la tabla `prospectos`; se descartó |
 | Crédito compartido | `AV-303`, suma exacta 100 % (`RN-20`, `RN-21`) | `RN-11`, explícitamente Fase 2 | **Fuera.** La regla de visibilidad por `ownerId` ya es compatible con extenderla a copropietarios |
 | Estatus `cancelada` | Se distingue de `perdida`: no cuenta en tasa de cierre | `RN-12` fija tres estados | **Tres estados.** Si el negocio mide tasa de cierre excluyendo cancelaciones, esto se pierde |
 | Migración desde Pipedrive | `AV-1201`, migración completa | Arranque en limpio (§1) | **En limpio** |
-| Consentimiento de datos | `AV-208`, `RN-07`, requisito legal en los tres países | No aparece | **No implementado.** Es requisito de LFPDPPP, Ley 1581 y Ley 19.628; conviene decidirlo antes de cargar personas reales |
+| Consentimiento de datos | `AV-208`, `RN-07` | No aparece | **No se implementa. Cerrado el 1-sep-2026** (`Q-11`). Ver §7 |
 
-La última fila merece atención: el catálogo la marca como «sin decisión — pero es
-requisito legal en los 3 países, no debería ser opcional».
+Las dos primeras filas quedaron cerradas el 1 de septiembre de 2026; ver §7.
 
 ---
 
@@ -140,3 +139,36 @@ demostración y AC-30 tenga un caso real.
   llega como transitiva de `@types/node@22`, perdió su evidencia de procedencia.
   No hay salida limpia: los tipos deben seguir el mayor de Node. Volver a
   `no-downgrade` cuando la recupere. Razonado en `pnpm-workspace.yaml`.
+
+---
+
+## 7. Decisiones cerradas el 1 de septiembre de 2026
+
+### Q-11 · No se implementa captura de consentimiento de datos personales
+
+**Decisión del negocio.** El sistema maneja **datos de contacto profesional** de personas
+vinculadas a empresas —nombre, cargo, correo corporativo, teléfono, empresa— tratados en su
+calidad de representantes de una organización. No hay datos de clientes finales, ni datos
+patrimoniales o financieros de personas, ni categorías sensibles.
+
+En consecuencia, `Person` **no lleva** los campos `consentimiento_datos` ni
+`consentimiento_fecha` que traía el esquema v1, y no hay flujo de captura de consentimiento.
+
+**Lo que sí queda cubierto por el diseño, sin trabajo extra:** el derecho de supresión y
+rectificación se atiende con el borrado lógico de `Person` (`deletedAt`, INV-15) y con la edición
+normal de la ficha. No hace falta nada adicional en el esquema.
+
+**Lo único que queda fuera del código:** publicar el aviso de privacidad es un asunto operativo
+de Avattar, no del CRM. Si en el futuro el sistema llegara a manejar datos de personas físicas
+como clientes finales —no como contactos de empresa—, esta decisión hay que reabrirla.
+
+### Q-12 · Se conservan los cinco roles del spec
+
+**Decisión del negocio:** mantener la implementación simple. `VENDEDOR`, `GERENTE_PAIS`,
+`DIRECCION`, `ADMINISTRADOR` y `PREVENTA`. Finanzas y Marketing, que el catálogo v2 proponía como
+roles propios (`AV-1101`), **no se implementan**.
+
+Si más adelante Finanzas necesita ver la facturación esperada o Marketing el origen de las
+oportunidades, la vía es un permiso nuevo en la matriz de §5.2 asignado a un rol existente, no un
+rol nuevo. La matriz es editable desde P-11 sin desplegar código, así que ese cambio no toca el
+esquema.

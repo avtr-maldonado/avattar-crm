@@ -1305,5 +1305,5 @@ El registro vivo, con el valor que se asumió para poder construir y qué cuesta
 | **Q-08** | ¿Pesos MEDDIC por omisión: los seis iguales, o el negocio prefiere ponderar decisor económico y campeón más alto? | Seed de `MeddicWeight` |
 | **Q-09** | ¿El SLA de autorización se cuenta en horas hábiles o naturales? Se asumió hábiles | `lib/domain/approval.ts` |
 | **Q-10** | ~~¿Quién carga el tipo de cambio?~~ **Sin efecto bajo monomoneda (§2.5)** | — |
-| **Q-11** | ¿El consentimiento de datos personales (`AV-208`) es obligatorio? El catálogo v2 lo marca como requisito legal en los tres países, y el spec no lo contempla | Captura de personas reales bajo LFPDPPP, Ley 1581 y Ley 19.628 |
-| **Q-12** | El catálogo v2 define 7 roles (incluye Finanzas y Marketing); este spec define 5. ¿Son roles o permisos sobre los existentes? | Matriz de permisos |
+| **Q-11** | ~~¿El consentimiento de datos personales (`AV-208`) es obligatorio?~~ **Resuelto el 1-sep-2026: no se implementa captura de consentimiento.** El sistema maneja datos de contacto profesional de personas vinculadas a empresas —nombre, cargo, correo corporativo, teléfono, empresa— en su calidad de representantes de una organización. No hay datos de clientes finales ni categorías sensibles | Cerrado |
+| **Q-12** | ~~7 roles del catálogo v2 contra 5 de este spec.~~ **Resuelto el 1-sep-2026: se conservan los 5.** Finanzas y Marketing no se implementan como roles; si necesitan acceso, será como permisos sobre los existentes | Cerrado |
