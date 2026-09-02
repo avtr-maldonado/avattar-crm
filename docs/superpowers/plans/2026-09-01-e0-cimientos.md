@@ -179,8 +179,15 @@ DIRECT_URL=
 
 - [ ] **Step 7: Verificar y confirmar**
 
+Cuatro cosas que se descubrieron al ejecutar esta tarea y que conviene no volver a descubrir:
+
+1. **pnpm 10.4.1 lee `onlyBuiltDependencies` de `package.json`, no de `pnpm-workspace.yaml`.** Sin eso bloquea los scripts de Prisma y esbuild. Los motores de Prisma 6.19 vienen prebuilt, así que funciona igual, pero el aviso persiste.
+2. **`prisma.config.ts` desactiva la carga automática de `.env`.** Hay que importar `dotenv/config` en ese archivo o `DATABASE_URL` llega vacía.
+3. **`eslint-config-next` no exporta configuración plana**; hay que envolverlo con `FlatCompat` de `@eslint/eslintrc`.
+4. **`react-doctor` necesita el directorio explícito** (`react-doctor .`). Sin el argumento devuelve un error interno silencioso con `projects: []` y código de salida 0, que parece éxito.
+
 ```bash
-pnpm lint && pnpm typecheck
+pnpm lint && pnpm typecheck && pnpm test && pnpm doctor
 git add -A && git commit -m "chore(E0): pnpm, dependencias, vitest, regla de frontera de imports"
 ```
 
@@ -337,7 +344,9 @@ git add -A && git commit -m "feat(E0): esquema Prisma completo con monomoneda US
 ## Task 4: Aplicar el esquema a Supabase con RLS de respaldo
 
 **Files:**
-- Create: `supabase/migrations/20260901120000_init_crm_avtr.sql`, `supabase/migrations/20260901120100_rls_deny_all.sql`
+- Create: `supabase/migrations/20260901120000_init_crm_avtr.sql`
+
+**Nota de la Task 1:** `react-doctor` trae la regla `supabase-table-missing-rls`, que exige habilitar RLS **en la misma migración que crea la tabla**, no en un archivo posterior. Es una regla mejor que la del esquema anterior, que separaba ambas cosas y por eso dejó once tablas descubiertas. El RLS va al final de este mismo archivo, no en una migración aparte.
 
 **Interfaces:**
 - Consumes: `prisma/schema.prisma` de la Task 3.
@@ -360,13 +369,11 @@ create extension if not exists "citext";
 create extension if not exists "pg_trgm";   -- §9.2 · búsqueda libre por trigram
 ```
 
-- [ ] **Step 3: Aplicar con el MCP de Supabase**
+- [ ] **Step 3: Anexar el RLS de respaldo al mismo archivo**
 
-Usar `mcp__supabase__apply_migration` con nombre `init_crm_avtr` y el contenido del archivo.
+Habilita RLS en **todas** las tablas de `public` sin crear ninguna política, que en Supabase equivale a deny-all para `anon` y `authenticated`. Prisma entra con su propio rol y no queda sujeto.
 
-- [ ] **Step 4: Escribir el RLS de respaldo**
-
-`20260901120100_rls_deny_all.sql`. Habilita RLS en **todas** las tablas de `public` y no crea ninguna política, que en Supabase equivale a deny-all para `anon` y `authenticated`. Prisma entra con su propio rol y no queda sujeto.
+Va al final del archivo de init, no en una migración aparte: separarlos es lo que dejó once tablas descubiertas en el esquema anterior, y es lo que `react-doctor/supabase-table-missing-rls` marca como error.
 
 ```sql
 -- Respaldo, no autorización. La autorización vive en lib/scope (INV-01),
@@ -386,13 +393,14 @@ begin
 end $$;
 ```
 
-- [ ] **Step 5: Aplicar y verificar**
+- [ ] **Step 4: Aplicar y verificar**
 
-Aplicar con `mcp__supabase__apply_migration`, luego:
+Aplicar con `mcp__supabase__apply_migration`, nombre `init_crm_avtr`, luego:
 - `mcp__supabase__list_tables` sobre `public` → 32 tablas, todas con `rls_enabled: true`.
 - `mcp__supabase__get_advisors` tipo `security` → sin hallazgos de RLS faltante.
+- `pnpm doctor` → los 28 hallazgos de `supabase-table-missing-rls` en cero.
 
-- [ ] **Step 6: Confirmar**
+- [ ] **Step 5: Confirmar**
 
 ```bash
 git add -A && git commit -m "feat(E0): esquema aplicado a Supabase con RLS deny-all en todas las tablas"
@@ -807,7 +815,7 @@ it("un vendedor que pide otro propietario obtiene cero, no los del otro (AC-25)"
 it("un rango sin dateField usa CIERRE_ESTIMADO y lo hace explícito (AC-23)", () => {
   const p = parseFilters(new URLSearchParams("from=2026-07-01&to=2026-09-30"), gerenteMx);
   expect(p.dateField).toBe("CIERRE_ESTIMADO");
-  expect(p.explicitos).toContain("dateField");
+  expect(p.explícitos).toContain("dateField");
 });
 ```
 
