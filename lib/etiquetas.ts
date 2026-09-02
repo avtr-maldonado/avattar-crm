@@ -44,3 +44,19 @@ export const ETIQUETA_BANDERA: Record<RiskFlag, string> = {
   ESTANCADA: "Estancada",
   MARGEN_BAJO: "Margen bajo",
 };
+
+/**
+ * Las iniciales del avatar: nombre y primer apellido.
+ *
+ * Aquí y no en cada pantalla, porque «Miguel Maldonado» debe dar MM en la barra
+ * lateral, en el encabezado y en la tarjeta. Dos implementaciones divergen en
+ * cuanto una tenga que lidiar con un nombre compuesto.
+ */
+export function iniciales(nombre: string): string {
+  return nombre
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((parte) => parte[0]?.toUpperCase() ?? "")
+    .join("");
+}

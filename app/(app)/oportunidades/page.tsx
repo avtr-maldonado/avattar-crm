@@ -6,6 +6,7 @@ import { formatPercent, formatUSD, sum, toClient } from "@/lib/money";
 import { openTotal, weightedAmount, weightedTotal } from "@/lib/domain/pipeline";
 import { computeRiskFlags } from "@/lib/domain/riskFlags";
 import { parseFilters, resolvePeriod, toWhere } from "@/lib/filters";
+import { iniciales } from "@/lib/etiquetas";
 import { BarraSuperior } from "@/components/ui/BarraSuperior";
 import { Boton, ControlSegmentado, StatTile } from "@/components/ui/primitivas";
 import { TableroKanban, type ColumnaKanban } from "@/components/pipeline/TableroKanban";
@@ -234,12 +235,3 @@ const FORMATO_FECHA = new Intl.DateTimeFormat("es-MX", {
   year: "numeric",
   timeZone: "UTC",
 });
-
-/** Las iniciales del avatar: nombre y primer apellido. */
-function iniciales(nombre: string): string {
-  return nombre
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
-}
