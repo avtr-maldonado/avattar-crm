@@ -21,3 +21,14 @@ supabase/.temp
 npm-debug.log*
 .vscode/*
 !.vscode/extensions.json
+
+# artefactos de compilacion
+*.tsbuildinfo
+next-env.d.ts
+
+# playwright
+/test-results/
+/playwright-report/
+
+# prisma
+prisma/generated/
