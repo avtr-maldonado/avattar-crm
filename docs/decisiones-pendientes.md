@@ -172,3 +172,89 @@ Si más adelante Finanzas necesita ver la facturación esperada o Marketing el o
 oportunidades, la vía es un permiso nuevo en la matriz de §5.2 asignado a un rol existente, no un
 rol nuevo. La matriz es editable desde P-11 sin desplegar código, así que ese cambio no toca el
 esquema.
+
+---
+
+## 8. Hallazgos al sembrar el escenario (1 de septiembre de 2026)
+
+Tres inconsistencias internas de §15, encontradas al ejecutar el seed contra la
+base real. Ninguna bloquea, pero las tres conviene confirmarlas con Dirección
+antes de la primera demostración.
+
+### 8.1 · Cinco organizaciones que se usan y nunca se declaran
+
+§15 lista **nueve** organizaciones en México, pero las catorce oportunidades
+referencian **catorce** distintas. Estas cinco aparecen como dueñas de una
+oportunidad y no están definidas en ningún lado:
+
+| Organización | Oportunidad que la usa |
+|---|---|
+| Insumos Médicos Reforma | OPP-2026-00369 · Portal de proveedores |
+| Logística Tepeyac | OPP-2026-00355 · Mesa de servicio 8x5 |
+| Constructora Zaragoza | OPP-2026-00341 · Licenciamiento obra civil |
+| Seguros Altamira | OPP-2026-00337 · Diagnóstico de procesos comerciales |
+| Alimentos del Pacífico | OPP-2026-00322 · Automatización de reportes |
+
+Se crearon con el tipo, la industria y la ciudad que su nombre y su negocio
+implican, marcadas con `declaradaEnSpec: false` en `prisma/seed/datos.ts`.
+**Confirmar esos atributos**, sobre todo el tipo (cliente o prospecto), que
+cambia lo que la ficha de cuenta muestra.
+
+### 8.2 · El puntaje MEDDIC 62 es aritméticamente imposible
+
+Con la fórmula de §7.2 y los pesos por omisión de Q-08 —cinco componentes a 17 y
+el dolor a 15— el puntaje **no es continuo**. Solo 33 valores son alcanzables:
+
+```
+0 · 8 · 9 · 15 · 16 · 17 · 24 · 25 · 26 · 32 · 33 · 34 · 41 · 42 · 43
+49 · 50 · 51 · 58 · 59 · 60 · 66 · 67 · 68 · 75 · 76 · 77 · 83 · 84 · 85
+92 · 93 · 100
+```
+
+§15 declara **62** para OPP-2026-00388, y 62 no está en la lista: los vecinos
+son 60 y 66. Siete de los catorce puntajes del escenario caen entre escalones:
+
+| Oportunidad | §15 pide | La fórmula da |
+|---|---:|---:|
+| OPP-2026-00402 | 55 | 58 |
+| OPP-2026-00388 | 62 | **66** |
+| OPP-2026-00374 | 28 | 26 |
+| OPP-2026-00369 | 48 | 49 |
+| OPP-2026-00341 | 12 | 9 |
+| OPP-2026-00337 | 18 | 17 |
+| OPP-2026-00311 | 31 | 32 |
+
+Lo que el escenario quería demostrar se conserva: OPP-2026-00388 sigue por
+debajo del mínimo de cierre (70), así que la validación se ve igual, y
+OPP-2026-00417 llega exactamente a los 84 que §15 pide.
+
+**Si el negocio necesita puntajes de grano fino**, la vía es cambiar los pesos
+en `MeddicWeight` —son editables desde P-11 sin desplegar (AC-17)— para que la
+rejilla sea más densa. Con pesos que no compartan divisor, los escalones se
+acercan.
+
+### 8.3 · El puntaje se derivó de los componentes, no al revés
+
+§6.3 dice que `meddicScore` es un valor **desnormalizado**: se recalcula de sus
+seis componentes y nunca se edita a mano. Sembrar el número sin las filas que lo
+producen habría dejado la pestaña MEDDIC vacía junto a un puntaje salido de la
+nada, en doce de las catorce oportunidades.
+
+El seed siembra las 84 evaluaciones (seis por oportunidad) y **calcula** el
+puntaje. Las dos que §15 detalla conservan su evidencia escrita a mano y sus
+personas ligadas; las otras doce derivan sus estados del puntaje objetivo, con
+evidencia genérica. Los componentes anclados a persona (`DECISOR_ECONOMICO` y
+`CAMPEON`) nunca quedan en `CONFIRMADO` ahí, porque RN-30 exige una `Person`
+ligada y esas oportunidades no tienen comité capturado.
+
+### 8.4 · La unicidad de los objetivos anuales no se estaba aplicando
+
+`@@unique([userId, fiscalYear, periodType, quarter])` con `quarter` nulo **no
+restringe nada** en Postgres, porque `NULL != NULL`. Se podían insertar dos
+objetivos anuales del mismo usuario y año, y RN-32 supone que hay uno solo.
+
+Corregido con un índice `NULLS NOT DISTINCT` (Postgres 15+), en la migración
+`unicidad_real_de_objetivos_anuales`. Conserva el significado de `quarter` nulo
+—no hay trimestre— en vez de inventar un centinela como 0. Prisma todavía no
+expresa esa cláusula en el schema, así que el índice se administra por
+migración y el `@@unique` se queda para que el cliente siga tipando la llave.
