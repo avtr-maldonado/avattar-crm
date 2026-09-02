@@ -45,6 +45,7 @@ const config = [
       "docs/**",
       "supabase/migrations/_archivo_v1/**",
       "prisma/generated/**",
+      "next-env.d.ts", // generado por Next en cada build
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),

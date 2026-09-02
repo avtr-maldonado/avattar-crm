@@ -8,8 +8,10 @@ import { defineConfig } from "prisma/config";
 // .env.local primero, para que las variables funcionen sin importar en cuál de
 // los dos archivo las hayan puesto. dotenv no sobreescribe lo ya definido, así
 // que el primero gana y el segundo solo rellena lo que falte.
-loadEnv({ path: ".env.local" });
-loadEnv({ path: ".env" });
+// quiet: sin esto dotenv escribe sus avisos a stdout, y `pnpm db:diff > archivo.sql`
+// los mete dentro del SQL generado, que deja de ser aplicable.
+loadEnv({ path: ".env.local", quiet: true });
+loadEnv({ path: ".env", quiet: true });
 
 export default defineConfig({
   schema: path.join("prisma", "schema.prisma"),
