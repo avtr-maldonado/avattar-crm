@@ -76,12 +76,30 @@ export type ParsedFilters = {
   visibles: string[];
 };
 
+/**
+ * Los conjuntos de valores permitidos, construidos una vez al cargar el módulo.
+ *
+ * `Array.includes` dentro de un filtro recorre la lista completa por cada valor
+ * de la URL. Las listas son cortas, pero esto se ejecuta en cada request de
+ * cada pantalla de lista, y un `Set` lo vuelve constante sin costar nada.
+ */
+const CONJUNTOS = new WeakMap<readonly string[], Set<string>>();
+
+function conjuntoDe(permitidos: readonly string[]): Set<string> {
+  let s = CONJUNTOS.get(permitidos);
+  if (!s) {
+    s = new Set(permitidos);
+    CONJUNTOS.set(permitidos, s);
+  }
+  return s;
+}
+
 /** Toma un valor de enum de la URL, o `null` si no es de la lista. */
 function unEnum<T extends readonly string[]>(
   valor: string | null,
   permitidos: T,
 ): T[number] | null {
-  return valor !== null && (permitidos as readonly string[]).includes(valor)
+  return valor !== null && conjuntoDe(permitidos).has(valor)
     ? (valor as T[number])
     : null;
 }
@@ -91,7 +109,8 @@ function variosEnum<T extends readonly string[]>(
   valores: string[],
   permitidos: T,
 ): T[number][] {
-  return valores.filter((v): v is T[number] => (permitidos as readonly string[]).includes(v));
+  const permitido = conjuntoDe(permitidos);
+  return valores.filter((v): v is T[number] => permitido.has(v));
 }
 
 function unEntero(valor: string | null, min: number, max: number): number | null {

@@ -51,18 +51,22 @@ async function main() {
   console.log("Sembrando el escenario del prototipo aprobado (§15)…\n");
 
   // ── Países y política comercial ──────────────────────────────────────────
-  for (const pais of PAISES) {
-    await prisma.country.upsert({
-      where: { code: pais.code },
-      update: { name: pais.name, taxRate: pais.taxRate, taxLabel: pais.taxLabel, timezone: pais.timezone },
-      create: { ...pais, fiscalYearStartMonth: 1 },
-    });
-    await prisma.commercialPolicy.upsert({
-      where: { countryCode: pais.code },
-      update: POLITICA_BASE,
-      create: { countryCode: pais.code, ...POLITICA_BASE },
-    });
-  }
+  // Los tres países son independientes entre sí; dentro de cada uno, la
+  // política tiene que esperar a que exista el país por la llave foránea.
+  await Promise.all(
+    PAISES.map(async (pais) => {
+      await prisma.country.upsert({
+        where: { code: pais.code },
+        update: { name: pais.name, taxRate: pais.taxRate, taxLabel: pais.taxLabel, timezone: pais.timezone },
+        create: { ...pais, fiscalYearStartMonth: 1 },
+      });
+      await prisma.commercialPolicy.upsert({
+        where: { countryCode: pais.code },
+        update: POLITICA_BASE,
+        create: { countryCode: pais.code, ...POLITICA_BASE },
+      });
+    }),
+  );
   console.log(`  ${PAISES.length} países con su política comercial`);
 
   // ── Permisos y la matriz de §5.2 ─────────────────────────────────────────
@@ -88,53 +92,59 @@ async function main() {
   console.log(`  ${Object.keys(PERMISOS_POR_ROL).length} permisos con su matriz por rol`);
 
   // ── Catálogos ────────────────────────────────────────────────────────────
-  for (const name of TIPOS_ACTIVIDAD) {
-    await prisma.activityType.upsert({ where: { name }, update: {}, create: { name } });
-  }
-  for (const t of TIPOS_DOCUMENTO) {
-    await prisma.documentType.upsert({
-      where: { name: t.name },
-      update: { isContract: t.isContract },
-      create: t,
-    });
-  }
-  for (const m of MOTIVOS_PERDIDA) {
-    await prisma.lossReason.upsert({
-      where: { name: m.name },
-      update: { requiresCompetitor: m.requiresCompetitor },
-      create: m,
-    });
-  }
-  for (const name of ROLES_COMITE) {
-    await prisma.committeeRole.upsert({ where: { name }, update: {}, create: { name } });
-  }
-  for (const name of ORIGENES) {
-    await prisma.opportunitySource.upsert({ where: { name }, update: {}, create: { name } });
-  }
-  for (const name of FAMILIAS_PRODUCTO) {
-    await prisma.productFamily.upsert({ where: { name }, update: {}, create: { name } });
-  }
+  // Las seis listas son independientes entre sí: van en paralelo.
+  await Promise.all([
+    ...TIPOS_ACTIVIDAD.map((name) =>
+      prisma.activityType.upsert({ where: { name }, update: {}, create: { name } }),
+    ),
+    ...TIPOS_DOCUMENTO.map((t) =>
+      prisma.documentType.upsert({
+        where: { name: t.name },
+        update: { isContract: t.isContract },
+        create: t,
+      }),
+    ),
+    ...MOTIVOS_PERDIDA.map((m) =>
+      prisma.lossReason.upsert({
+        where: { name: m.name },
+        update: { requiresCompetitor: m.requiresCompetitor },
+        create: m,
+      }),
+    ),
+    ...ROLES_COMITE.map((name) =>
+      prisma.committeeRole.upsert({ where: { name }, update: {}, create: { name } }),
+    ),
+    ...ORIGENES.map((name) =>
+      prisma.opportunitySource.upsert({ where: { name }, update: {}, create: { name } }),
+    ),
+    ...FAMILIAS_PRODUCTO.map((name) =>
+      prisma.productFamily.upsert({ where: { name }, update: {}, create: { name } }),
+    ),
+  ]);
   console.log(
     `  catálogos: ${TIPOS_ACTIVIDAD.length} tipos de actividad, ${TIPOS_DOCUMENTO.length} de documento, ` +
       `${MOTIVOS_PERDIDA.length} motivos de pérdida, ${ROLES_COMITE.length} roles de comité`,
   );
 
   // ── Usuarios ─────────────────────────────────────────────────────────────
-  const usuarios = new Map<string, string>();
-  for (const u of USUARIOS) {
-    const fila = await prisma.user.upsert({
-      where: { email: correoDe(u.clave) },
-      update: { name: u.name, role: u.role, countryCodes: [...u.paises], initials: u.clave },
-      create: {
-        email: correoDe(u.clave),
-        name: u.name,
-        initials: u.clave,
-        role: u.role,
-        countryCodes: [...u.paises],
-      },
-    });
-    usuarios.set(u.clave, fila.id);
-  }
+  const filasUsuario = await Promise.all(
+    USUARIOS.map((u) =>
+      prisma.user.upsert({
+        where: { email: correoDe(u.clave) },
+        update: { name: u.name, role: u.role, countryCodes: [...u.paises], initials: u.clave },
+        create: {
+          email: correoDe(u.clave),
+          name: u.name,
+          initials: u.clave,
+          role: u.role,
+          countryCodes: [...u.paises],
+        },
+      }),
+    ),
+  );
+  const usuarios = new Map<string, string>(
+    USUARIOS.map((u, i) => [u.clave, filasUsuario[i].id]),
+  );
   console.log(`  ${USUARIOS.length} usuarios`);
 
   // ── Pipelines, etapas y pesos MEDDIC ─────────────────────────────────────

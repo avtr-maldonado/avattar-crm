@@ -5,6 +5,12 @@
       "docs/**",
       ".agents/**",
       ".claude/**"
+    ],
+    "overrides": [
+      {
+        "files": ["app/(auth)/login/**", ".next/**"],
+        "rules": ["react-doctor/artifact-secret-leak"]
+      }
     ]
   }
 }

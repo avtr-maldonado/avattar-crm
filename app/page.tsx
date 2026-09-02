@@ -1,11 +1,9 @@
+import { redirect } from "next/navigation";
+
+/**
+ * La raíz manda al pipeline: es la pantalla principal del sistema y la primera
+ * pregunta que un vendedor y un gerente se hacen todos los días (P-01).
+ */
 export default function Home() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-2 p-8">
-      <h1 className="text-2xl font-semibold">Avattar CRM</h1>
-      <p className="text-sm text-neutral-500">
-        Proyecto recién iniciado — ver CLAUDE.md para el contexto completo antes
-        de construir el primer módulo.
-      </p>
-    </main>
-  );
+  redirect("/oportunidades");
 }
