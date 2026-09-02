@@ -1,0 +1,10 @@
+{
+  "ignore": {
+    "files": [
+      "supabase/migrations/_archivo_v1/**",
+      "docs/**",
+      ".agents/**",
+      ".claude/**"
+    ]
+  }
+}
