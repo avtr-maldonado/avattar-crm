@@ -1,0 +1,15 @@
+packages:
+  - '.'
+
+# Endurecimiento de la cadena de suministro (react-doctor/require-pnpm-hardening).
+# Una versión recien publicada puede traer malware que se detecta y se despublica
+# en cuestión de horas; esperar una semana evita instalar justo esa ventana.
+#
+# Requiere pnpm >= 10.16. En 10.4.1 se ignora en silencio, asi que la proteccion
+# real llega al subir la versión de packageManager. onlyBuiltDependencies vive en
+# package.json porque 10.4.1 solo lo lee de ahí.
+minimumReleaseAge: 10080   # 7 días, en minutos
+
+# Rechaza paquetes cuyas señales de confianza (procedencia, firmas) se debiliten
+# entre actualizaciones. Requiere pnpm >= 10.18.
+trustPolicy: no-downgrade

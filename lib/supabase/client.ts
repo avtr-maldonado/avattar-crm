@@ -1,14 +1,15 @@
 import { createBrowserClient } from "@supabase/ssr";
-import type { Database } from "@/types/supabase";
 
 /**
- * Cliente de Supabase para usar en Client Components ("use client").
- * Sujeto a RLS — no funcionará para leer/escribir hasta que existan políticas
- * (ver CLAUDE.md).
+ * Cliente de Supabase para Client Components.
+ *
+ * Su único uso es el arranque del inicio de sesión con Entra ID. No lee datos
+ * de negocio: RLS está en deny-all para `anon` y `authenticated`, a propósito
+ * (§4.3 del diseño). Los datos llegan por Server Components vía `lib/scope`.
  */
 export function createClient() {
-  return createBrowserClient<Database>(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
 }
