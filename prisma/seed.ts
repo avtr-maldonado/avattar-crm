@@ -130,10 +130,10 @@ async function main() {
   const filasUsuario = await Promise.all(
     USUARIOS.map((u) =>
       prisma.user.upsert({
-        where: { email: correoDe(u.clave) },
+        where: { email: correoDe(u) },
         update: { name: u.name, role: u.role, countryCodes: [...u.paises], initials: u.clave },
         create: {
-          email: correoDe(u.clave),
+          email: correoDe(u),
           name: u.name,
           initials: u.clave,
           role: u.role,

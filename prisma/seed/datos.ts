@@ -83,14 +83,34 @@ export const USUARIOS = [
   // cuentas de rol, no como personas inventadas.
   { clave: "DC", name: "Dirección Comercial", role: "DIRECCION", paises: ["MX", "CO", "CL"] },
   { clave: "AS", name: "Administración del sistema", role: "ADMINISTRADOR", paises: ["MX", "CO", "CL"] },
+
+  // Usuarios reales del equipo. Llevan `correo` explícito porque el suyo no se
+  // deriva de las iniciales como el de las cuentas del escenario.
+  //
+  // Este es el «alta administrativa» del sistema: una fila aquí, y la primera
+  // vez que la persona entra por Entra ID se sella el vínculo con su object id.
+  // Para dar de alta a alguien más, agrega su renglón y corre `pnpm db:seed`.
+  {
+    clave: "MM",
+    name: "Miguel Maldonado",
+    role: "ADMINISTRADOR",
+    paises: ["MX", "CO", "CL"],
+    correo: "miguel.maldonado@avattar.com",
+  },
 ] as const satisfies readonly {
   clave: string;
   name: string;
   role: Role;
   paises: readonly CountryCode[];
+  correo?: string;
 }[];
 
-export const correoDe = (clave: string) => `${clave.toLowerCase()}@avattar.com`;
+/**
+ * El correo del usuario. Las cuentas del escenario lo derivan de sus
+ * iniciales; los usuarios reales traen el suyo.
+ */
+export const correoDe = (u: { clave: string; correo?: string }) =>
+  u.correo ?? `${u.clave.toLowerCase()}@avattar.com`;
 
 // ───────────────────────────────────────────────────────────── Pipeline
 
