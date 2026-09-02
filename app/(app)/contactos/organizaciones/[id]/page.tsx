@@ -34,8 +34,8 @@ export default async function FichaDeOrganizacionPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireSession();
-  const { id } = await params;
+  // Independientes: `requireSession` es un viaje a la base (docs/latencia.md).
+  const [session, { id }] = await Promise.all([requireSession(), params]);
 
   const cuenta = await getOrganizationDetail(session, id);
 

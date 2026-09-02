@@ -47,8 +47,9 @@ export default async function PipelinePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await requireSession();
-  const params = await searchParams;
+  // Independientes: `requireSession` es un viaje a la base y no depende de los
+  // parámetros de la URL (docs/latencia.md).
+  const [session, params] = await Promise.all([requireSession(), searchParams]);
 
   // Los filtros viven en la URL. Se normalizan a `URLSearchParams` porque es lo
   // que `lib/filters` consume, y porque un parámetro repetido —dos etapas, tres

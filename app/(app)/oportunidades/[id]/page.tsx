@@ -44,9 +44,14 @@ export default async function DetalleOportunidadPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await requireSession();
-  const { id } = await params;
-  const sp = await searchParams;
+  // Los tres son independientes entre sí: `requireSession` es un viaje a la base
+  // y no depende de los parámetros de la ruta. En secuencia se paga de más
+  // (docs/latencia.md).
+  const [session, { id }, sp] = await Promise.all([
+    requireSession(),
+    params,
+    searchParams,
+  ]);
 
   const oportunidad = await getOpportunityDetail(session, id);
 

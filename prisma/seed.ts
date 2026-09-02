@@ -1,5 +1,6 @@
 import { PrismaClient, type MeddicComponent } from "@prisma/client";
 import { computeMeddicScore } from "@/lib/domain/meddic";
+import { derivarActividades } from "./seed/actividades";
 import { derivarMeddic } from "./seed/meddic";
 import { PERMISOS_POR_ROL } from "./seed/permisos";
 import {
@@ -434,6 +435,49 @@ async function main() {
   Puntajes MEDDIC ajustados al escalón más cercano de la fórmula:`);
     for (const d of desviaciones) console.log(`    ${d}`);
   }
+
+  // ── Actividades ──────────────────────────────────────────────────────────
+  //
+  // Las fechas `lastActivityAt` y `nextActivityAt` de la oportunidad mandan; las
+  // actividades se derivan de ellas. Sin estas filas, la bitácora de P-02 sale
+  // vacía junto a una fecha de última actividad, y la bandeja de P-07 no tiene
+  // qué mostrar.
+  const tiposActividad = new Map(
+    (await prisma.activityType.findMany({ select: { id: true, name: true } })).map((t) => [
+      t.name,
+      t.id,
+    ]),
+  );
+
+  // Se rehacen desde cero en cada corrida: no tienen llave natural con la cual
+  // hacer upsert, y duplicarlas al resembrar ensuciaría la bitácora.
+  await prisma.activity.deleteMany({
+    where: { opportunityId: { in: [...oportunidades.values()] } },
+  });
+
+  let actividadesSembradas = 0;
+  for (const o of OPORTUNIDADES) {
+    const opportunityId = oportunidades.get(o.folio)!;
+    const organizationId = organizaciones.get(o.organizacion)!;
+    const userId = usuarios.get(o.propietario)!;
+
+    await prisma.activity.createMany({
+      data: derivarActividades(o).map((a) => ({
+        typeId: tiposActividad.get(a.tipo)!,
+        subject: a.asunto,
+        notes: a.notas ?? null,
+        startsAt: enDias(a.dias),
+        durationMin: 45,
+        completedAt: a.realizada ? enDias(a.dias) : null,
+        outcome: a.resultado ?? null,
+        organizationId,
+        opportunityId,
+        userId,
+      })),
+    });
+    actividadesSembradas += derivarActividades(o).length;
+  }
+  console.log(`  ${actividadesSembradas} actividades derivadas de las fechas de cada oportunidad`);
 
   // ── Objetivos ────────────────────────────────────────────────────────────
   let objetivosSembrados = 0;
