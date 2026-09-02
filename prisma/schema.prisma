@@ -1,0 +1,15 @@
+// CRM Avattar · fuente del modelo de datos.
+//
+// El SQL se genera desde aqui con `pnpm db:diff` y se aplica al proyecto de
+// Supabase. Ver §4.1 del diseno: el schema es la fuente, Supabase lleva el
+// historial aplicado.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooler en modo transaccion (6543)
+  directUrl = env("DIRECT_URL")   // pooler en modo sesion (5432), migraciones
+}
