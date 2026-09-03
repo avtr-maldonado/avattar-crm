@@ -1,3 +1,4 @@
+import type { CountryCode } from "@prisma/client";
 import type { Session } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/db";
 
@@ -48,16 +49,38 @@ export type PipelineConEtapas = Awaited<ReturnType<typeof listPipelines>>[number
 export type EtapaDePipeline = PipelineConEtapas["stages"][number];
 
 /**
- * El pipeline que la pantalla debe mostrar por omisión.
+ * El pipeline que la pantalla debe mostrar por omisión: **el del país activo**.
  *
- * El de ventas del primer país del usuario, no el de renovaciones: es donde
- * está el trabajo diario.
+ * De ventas, no de renovaciones: ahí está el trabajo diario.
+ *
+ * ## Por qué recibe el país en vez de deducirlo
+ *
+ * Antes filtraba por los países del usuario y se quedaba con el primero de la
+ * lista. Esa lista viene ordenada por nombre —así la devuelve `listPipelines`—
+ * y entre los de venta «Ventas Chile» va antes que «Ventas México». Para
+ * Dirección y Administración, que llevan los tres países, el tablero abría en
+ * Chile: cinco columnas vacías con la base llena de oportunidades mexicanas.
+ *
+ * El país activo ya lo calcula la pantalla para leer la política comercial y
+ * para el selector del encabezado. Recibirlo aquí es lo que impide que las dos
+ * cosas se separen otra vez: el tablero y la política hablan del mismo país o
+ * no compilan.
  */
 export function pipelinePorOmision(
   pipelines: PipelineConEtapas[],
   session: Session,
+  paisActivo: CountryCode,
 ): PipelineConEtapas | undefined {
   const delUsuario = new Set<string>(session.countryCodes);
-  const delPais = pipelines.filter((p) => !p.isRenewal && delUsuario.has(p.countryCode));
-  return delPais[0] ?? pipelines.find((p) => !p.isRenewal) ?? pipelines[0];
+  const deVenta = pipelines.filter((p) => !p.isRenewal);
+
+  return (
+    deVenta.find((p) => p.countryCode === paisActivo) ??
+    // El país activo puede no tener pipeline configurado todavía (CO y CL
+    // llegan con E5). Antes de dejar la pantalla en blanco, uno de venta que
+    // el usuario sí alcance.
+    deVenta.find((p) => delUsuario.has(p.countryCode)) ??
+    deVenta[0] ??
+    pipelines[0]
+  );
 }

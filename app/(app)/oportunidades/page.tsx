@@ -114,7 +114,9 @@ export default async function PipelinePage({
     />
   );
 
-  const pipeline = pipelinePorOmision(pipelines, session);
+  // El mismo país que la política y el selector del encabezado. Pasarlo
+  // explícitamente es lo que impide que el tablero y la política se separen.
+  const pipeline = pipelinePorOmision(pipelines, session, paisActivo);
   const filtros = parseFilters(urlParams, session);
   const opciones = { fiscalYearStartMonth: pais.fiscalYearStartMonth };
 

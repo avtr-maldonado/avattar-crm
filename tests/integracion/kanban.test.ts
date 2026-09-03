@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Session } from "@/lib/auth/permissions";
+import type { CountryCode } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { OPORTUNIDADES } from "@/prisma/seed/datos";
 import { listOpportunities } from "@/lib/scope";
@@ -57,12 +58,12 @@ async function sesionDe(correo: string): Promise<Session> {
  */
 const FOLIOS_SEMBRADOS = new Set(OPORTUNIDADES.map((o) => o.folio));
 
-async function columnasDe(session: Session) {
+async function columnasDe(session: Session, paisActivo: CountryCode = "MX") {
   const [pipelines, todas] = await Promise.all([
     listPipelines(session),
     listOpportunities(session),
   ]);
-  const pipeline = pipelinePorOmision(pipelines, session)!;
+  const pipeline = pipelinePorOmision(pipelines, session, paisActivo)!;
   // Pasa por `lib/scope` como la pantalla real, y después se queda con el
   // escenario de §15 para poder compararlo contra la maqueta aprobada.
   const oportunidades = todas.filter((o) => FOLIOS_SEMBRADOS.has(o.folio));
@@ -193,5 +194,42 @@ describe("tablero kanban · señales visuales", () => {
     const jorge = await sesionDe("jm@avattar.com");
     const columnas = await columnasDe(jorge);
     expect(formatUSD(columnas[4].total)).toBe("$2,345,000.00");
+  });
+});
+
+describe("el tablero de quien lleva varios países · regresión", () => {
+  /**
+   * El defecto que esto cubre: `listPipelines` ordena por nombre y entre los de
+   * venta «Ventas Chile» va antes que «Ventas México». Dirección y
+   * Administración llevan los tres países, así que el tablero abría en Chile
+   * —cero oportunidades— con la base llena de trabajo mexicano.
+   *
+   * Las pruebas de arriba no lo vieron porque todas usan a Jorge, que solo
+   * tiene MX. Por eso esta prueba existe y usa a los que sí llevan varios.
+   */
+  for (const correo of ["dc@avattar.com", "as@avattar.com"]) {
+    it(`${correo} ve oportunidades en su tablero, no columnas vacías`, async () => {
+      const sesion = await sesionDe(correo);
+      expect(sesion.countryCodes.length).toBeGreaterThan(1);
+
+      const columnas = await columnasDe(sesion);
+      const total = columnas.reduce((n, c) => n + c.cantidad, 0);
+
+      expect(total, "el tablero salió vacío con la base llena").toBeGreaterThan(0);
+      expect(toClient(sum(columnas.map((c) => c.total)))).toBe("12621000");
+    });
+  }
+
+  it("cambiar de país cambia el tablero", async () => {
+    // Colombia y Chile llegan con E5: sus pipelines existen y están vacíos.
+    // Que el tablero los muestre vacíos ahí es correcto; lo que no lo era es
+    // mostrarlos cuando el usuario está viendo México.
+    const direccion = await sesionDe("dc@avattar.com");
+
+    const mexico = await columnasDe(direccion, "MX");
+    const colombia = await columnasDe(direccion, "CO");
+
+    expect(mexico.reduce((n, c) => n + c.cantidad, 0)).toBeGreaterThan(0);
+    expect(colombia.reduce((n, c) => n + c.cantidad, 0)).toBe(0);
   });
 });
