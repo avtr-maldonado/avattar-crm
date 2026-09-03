@@ -96,3 +96,60 @@ export async function getOrganization(session: Session, id: string) {
     },
   });
 }
+
+/**
+ * Sugerencias de organización para el alta de una oportunidad.
+ *
+ * ## Esta función salta el alcance por rol, a propósito
+ *
+ * `organizationScope` no se aplica aquí. Es la **única** excepción a INV-01 en
+ * todo el sistema, decidida con el negocio el 2 de septiembre de 2026, y vive
+ * en una función con nombre propio para que se vea en vez de esconderse dentro
+ * de una consulta.
+ *
+ * **Por qué.** Si un vendedor no ve que «Hidrosistemas del Valle» ya existe
+ * porque la ficha es de otro, va a dar de alta «Hidrosistemas del Valle SA», y
+ * a partir de ese momento el histórico de esa cuenta queda partido en dos para
+ * siempre. Los duplicados de organización no se limpian nunca.
+ *
+ * **Qué se expone y qué no.** Solo nombre, tipo y ciudad. **Nunca el
+ * propietario, nunca cifras, nunca conteos.** Un vendedor descubre qué empresas
+ * son clientes de Avattar; no descubre de quién son ni cuánto valen. La fuga
+ * queda acotada a exactamente lo que el negocio autorizó.
+ *
+ * El país sí acota: nadie ve la cartera de otro país (AC-05).
+ */
+export async function buscarOrganizacionesParaAlta(session: Session, texto: string) {
+  const termino = texto.trim();
+  if (termino.length < 2) return [];
+
+  return prisma.organization.findMany({
+    where: {
+      deletedAt: null,
+      countryCode: { in: session.countryCodes },
+      name: { contains: termino, mode: "insensitive" },
+    },
+    select: { id: true, name: true, type: true, city: true },
+    orderBy: { name: "asc" },
+    take: 8,
+  });
+}
+
+/**
+ * Las personas de una organización, para el campo de persona principal.
+ *
+ * Aquí **sí** aplica el alcance: elegida la organización, sus contactos son
+ * dato de la cuenta y `getOrganization` ya decide quién la alcanza. Si la
+ * sesión no llega a esa organización, no hay personas que ofrecer.
+ */
+export async function buscarPersonasDeOrganizacion(session: Session, organizationId: string) {
+  const organizacion = await getOrganization(session, organizationId);
+  if (!organizacion) return [];
+
+  return organizacion.people.map((p) => ({
+    id: p.id,
+    name: p.name,
+    jobTitle: p.jobTitle,
+    committeeRole: p.committeeRole,
+  }));
+}

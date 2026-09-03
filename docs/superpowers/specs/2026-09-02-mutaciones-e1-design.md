@@ -251,6 +251,11 @@ eso queda en bitácora con `before` y `after`.
 
 ### 4.5 `crearOportunidad`
 
+> **Ampliada el 2-sep-2026 al construir la pantalla.** Además de lo que sigue,
+> acepta crear la organización y la persona **en la misma transacción**, y
+> elegir la etapa de entrada evaluando su compuerta. Ver
+> `docs/decisiones-pendientes.md` §11.
+
 ```ts
 crearOportunidad(input: {
   name: string;

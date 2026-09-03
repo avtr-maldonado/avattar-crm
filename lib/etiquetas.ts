@@ -60,3 +60,17 @@ export function iniciales(nombre: string): string {
     .map((parte) => parte[0]?.toUpperCase() ?? "")
     .join("");
 }
+
+/**
+ * El trimestre fiscal de una fecha `AAAA-MM-DD`, para anotar el campo de cierre
+ * estimado: «T4 2026».
+ *
+ * `Q-02` · se asumió que el año fiscal de Avattar es el calendario. Si resulta
+ * que no, este es el único lugar que hay que tocar para las anotaciones —los
+ * cálculos de periodo ya leen `Country.fiscalYearStartMonth`.
+ */
+export function etiquetaDeTrimestre(iso: string): string | null {
+  const [anio, mes] = iso.split("-").map(Number);
+  if (!anio || !mes) return null;
+  return `T${Math.floor((mes - 1) / 3) + 1} ${anio}`;
+}

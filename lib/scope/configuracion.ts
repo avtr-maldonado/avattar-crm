@@ -169,3 +169,27 @@ export async function usuariosPorRol() {
   });
   return Object.fromEntries(filas.map((f) => [f.role, f._count]));
 }
+
+/**
+ * Los dos catálogos que el alta de oportunidad necesita, y solo esos.
+ *
+ * `configuracionDeCatalogos` trae seis con sus conteos de uso, que es lo que
+ * P-11 necesita para decidir si desactivar algo rompe reportes. Traerlos todos
+ * aquí sería pagar cinco consultas de más en la pantalla que más se abre.
+ */
+export async function catalogosParaAlta() {
+  const [origenes, rolesComite] = await Promise.all([
+    prisma.opportunitySource.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.committeeRole.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
+
+  return { origenes, rolesComite };
+}

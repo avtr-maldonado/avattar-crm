@@ -63,6 +63,9 @@ export function Boton({
   onClick,
   disabled,
   className,
+  name,
+  value,
+  form,
 }: {
   children: React.ReactNode;
   variante?: "primario" | "secundario" | "fantasma" | "peligro";
@@ -71,6 +74,15 @@ export function Boton({
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
+  /**
+   * `name` y `value` en un botón de envío hacen que el botón **lleve su propio
+   * dato**. Es lo que permite distinguir «Crear» de «Crear de todos modos» sin
+   * un campo oculto que haya que sincronizar con estado.
+   */
+  name?: string;
+  value?: string;
+  /** Para enviar un formulario que está fuera del botón, como el pie de un modal. */
+  form?: string;
 }) {
   const estilo = clsx(
     "inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2 text-sm font-semibold",
@@ -93,7 +105,15 @@ export function Boton({
     );
   }
   return (
-    <button type={type} onClick={onClick} disabled={disabled} className={estilo}>
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={estilo}
+      name={name}
+      value={value}
+      form={form}
+    >
       {children}
     </button>
   );

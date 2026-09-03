@@ -1,6 +1,9 @@
 import { requireSession } from "@/lib/auth/session";
 import { listOpportunities } from "@/lib/scope";
 import { listPipelines, pipelinePorOmision } from "@/lib/scope/pipelines";
+import { catalogosParaAlta } from "@/lib/scope/configuracion";
+import { destinatariosValidos } from "@/lib/domain/opportunity";
+import { can } from "@/lib/auth/permissions";
 import { getCommercialPolicy, getCountry } from "@/lib/policy";
 import { formatPercent, formatUSD, sum, toClient } from "@/lib/money";
 import { openTotal, weightedAmount, weightedTotal } from "@/lib/domain/pipeline";
@@ -12,6 +15,8 @@ import { Boton, ControlSegmentado, StatTile } from "@/components/ui/primitivas";
 import { TableroKanban, type ColumnaKanban } from "@/components/pipeline/TableroKanban";
 import type { DatosTarjeta } from "@/components/pipeline/TarjetaOportunidad";
 import { TablaOportunidades } from "@/components/pipeline/TablaOportunidades";
+import { NuevaOportunidad } from "@/components/pipeline/NuevaOportunidad";
+import { buscarOrganizacionesAccion, buscarPersonasAccion, crearOportunidadAccion } from "./acciones";
 
 /**
  * P-01 · Pipeline de oportunidades.
@@ -64,11 +69,50 @@ export default async function PipelinePage({
   const vista: Vista = urlParams.get("vista") === "tabla" ? "tabla" : "kanban";
   const paisActivo = session.countryCodes[0] ?? "MX";
 
-  const [pipelines, politica, pais] = await Promise.all([
+  const puedeAsignar = can(session, "VER_OPORTUNIDADES_OFICINA");
+
+  const [pipelines, politica, pais, catalogos, propietarios] = await Promise.all([
     listPipelines(session),
     getCommercialPolicy(paisActivo),
     getCountry(paisActivo),
+    catalogosParaAlta(),
+    // Solo si de verdad puede asignar: consultar usuarios para deshabilitar un
+    // control sería pagar por una lista que nadie va a poder usar (Q-13).
+    puedeAsignar ? destinatariosValidos(paisActivo) : Promise.resolve([]),
   ]);
+
+  /**
+   * El alta necesita las etapas con su cuenta de requisitos, para poder decir
+   * «2 requisitos de entrada» ANTES de enviar. Enterarse al guardar es
+   * enterarse tarde.
+   */
+  const pipelinesParaAlta = pipelines.map((p) => ({
+    id: p.id,
+    name: p.name,
+    countryCode: p.countryCode,
+    stages: p.stages.map((e) => ({
+      id: e.id,
+      name: e.name,
+      position: e.position,
+      probability: toClient(e.probability),
+      requisitos: e.gateRequires.length,
+      gateMode: e.gateMode,
+    })),
+  }));
+
+  const botonDeAlta = (
+    <NuevaOportunidad
+      pipelines={pipelinesParaAlta}
+      origenes={catalogos.origenes}
+      rolesDeComite={catalogos.rolesComite}
+      propietarios={propietarios.map((u) => ({ id: u.id, name: u.name }))}
+      usuarioActual={{ id: session.userId, name: session.name }}
+      puedeAsignar={puedeAsignar}
+      buscarOrganizaciones={buscarOrganizacionesAccion}
+      buscarPersonas={buscarPersonasAccion}
+      accion={crearOportunidadAccion}
+    />
+  );
 
   const pipeline = pipelinePorOmision(pipelines, session);
   const filtros = parseFilters(urlParams, session);
@@ -169,9 +213,7 @@ export default async function PipelinePage({
       <div className="flex-1 overflow-y-auto px-8 py-6">
         <div className="flex flex-wrap items-center gap-3">
           <ControlSegmentado opciones={VISTAS} activa={vista} hrefDe={hrefVista} />
-          <div className="ml-auto">
-            <Boton href="/oportunidades/nueva">+ Nueva oportunidad</Boton>
-          </div>
+          <div className="ml-auto">{botonDeAlta}</div>
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-5">
@@ -214,7 +256,7 @@ export default async function PipelinePage({
                   <Boton href="/oportunidades" variante="secundario">
                     Limpiar filtros
                   </Boton>
-                  <Boton href="/oportunidades/nueva">Nueva oportunidad</Boton>
+                  {botonDeAlta}
                 </>
               }
             />

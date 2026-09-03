@@ -221,11 +221,33 @@ describe("seed §15 · integridad del escenario", () => {
   });
 
   it("el contador de folio queda listo para la siguiente alta (RN-20)", async () => {
+    /**
+     * **Al menos** el máximo sembrado, no exactamente.
+     *
+     * La igualdad valía mientras nada pudiera crear oportunidades. Ya no: el
+     * contador es atómico y **no retrocede al borrar**, así que cada alta de
+     * prueba quema su número para siempre. Eso no es una fuga, es INV-12
+     * funcionando —«el folio es inmutable, incluso al reabrir»—: reutilizar un
+     * consecutivo liberado sería peor que dejar el hueco, porque dos documentos
+     * distintos acabarían con el mismo folio en la contabilidad del cliente.
+     *
+     * Lo que de verdad hay que garantizar es que la siguiente alta no choque
+     * con nada sembrado.
+     */
     const contador = await prisma.folioCounter.findUniqueOrThrow({ where: { year: 2026 } });
     const maximoSembrado = Math.max(
       ...OPORTUNIDADES.map((o) => Number.parseInt(o.folio.slice(-5), 10)),
     );
-    expect(contador.lastNumber).toBe(maximoSembrado);
+    expect(contador.lastNumber).toBeGreaterThanOrEqual(maximoSembrado);
+
+    // Y que ningún folio sembrado esté por encima del contador, que sería la
+    // forma real de que la siguiente alta colisionara.
+    const folios = await prisma.opportunity.findMany({ select: { folio: true } });
+    for (const { folio } of folios) {
+      const [, anio, consecutivo] = folio.match(/^OPP-(\d{4})-(\d{5})$/) ?? [];
+      if (anio !== "2026") continue;
+      expect(Number.parseInt(consecutivo, 10), folio).toBeLessThanOrEqual(contador.lastNumber);
+    }
   });
 
   it("RN-32 · el anual cuadra con los trimestres salvo en el caso deliberado", async () => {

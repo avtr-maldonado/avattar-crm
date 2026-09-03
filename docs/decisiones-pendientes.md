@@ -380,3 +380,72 @@ cuota que avanza, qué política comercial le aplica, quién la autoriza.
 
 **Dónde vive:** la consulta de destinatarios válidos en `lib/domain/opportunity.ts`.
 **Costo de cambiarla:** una condición.
+
+---
+
+## 11. El alta de oportunidad, y la excepción a INV-01 (2 de septiembre de 2026)
+
+La pantalla se diseñó contra un boceto del cliente. Cuatro cosas del boceto
+chocaban con decisiones ya tomadas y se resolvieron así:
+
+| Lo que pedía el boceto | Qué se hizo | Por qué |
+|---|---|---|
+| Folio `OPP-2026-00431` visible antes de crear | `OPP-2026-·····  se asigna al crear` | El consecutivo solo avanza al insertar. Mostrarlo antes obligaría a reservarlo al abrir el formulario, y cada cancelación dejaría un hueco en la serie |
+| Importes en `MXN` | **USD** | `enum Currency` tiene un solo valor. No es una preferencia distinta: es imposible en el esquema. Cambiarlo reactiva `INV-08` y arrastra la conversión de Defontana |
+| «Jorge Medina · 100 % del crédito» | Solo el propietario | El crédito compartido es `RN-11` / `F-113`, **Fase 2**. Mostrar un 100 % sugiere que hay un control para cambiarlo |
+| Botón «Crear y cotizar» | «Crear oportunidad» | El cotizador es E2. Se renombra cuando exista a dónde llevar |
+
+### 11.1 · La búsqueda de organizaciones salta el alcance por rol
+
+**Es la única excepción a `INV-01` en todo el sistema.** Decidida con el negocio
+el 2-sep-2026, entre tres opciones.
+
+**Lo que hace.** `buscarOrganizacionesParaAlta` no aplica `organizationScope`:
+sugiere todas las organizaciones del país de quien busca, sean suyas o no.
+
+**Por qué.** Si un vendedor no ve que «Hidrosistemas del Valle» ya existe porque
+la ficha es de otro, va a dar de alta «Hidrosistemas del Valle SA». A partir de
+ese momento el histórico de esa cuenta queda partido en dos **para siempre**:
+los duplicados de organización no se limpian nunca, y ningún reporte por cuenta
+vuelve a cuadrar. El costo del duplicado es permanente; el de la excepción, no.
+
+**Qué se expone y qué no.** Nombre, tipo y ciudad. **Nunca el propietario, nunca
+cifras, nunca conteos.** Un vendedor descubre qué empresas son clientes de
+Avattar; no descubre de quién son ni cuánto valen ni cuántas oportunidades
+tienen. El país sí acota: nadie ve la cartera de otro país (`AC-05`).
+
+La excepción vive en una función con nombre propio y su justificación en el
+encabezado, **no escondida dentro de una consulta**. Hay pruebas que verifican
+que no filtre de más.
+
+**Costo de revertirla:** cambiar el `where` por `withOrganizationScope`. Una
+línea. Lo que no se revierte son los duplicados que se hayan creado mientras
+tanto.
+
+### 11.2 · Se puede crear en una etapa avanzada, con las mismas compuertas
+
+**Decidido el 2-sep-2026.** El selector deja elegir cualquier etapa del pipeline
+y el servidor evalúa `RN-02` igual que al mover, con la misma regla de
+`ADVERTENCIA` y `BLOQUEANTE`.
+
+**Por qué.** Al arrancar hay que capturar los tratos que ya vienen de Pipedrive
+a medio camino. Sin esto, todos nacen en Calificación y el pipeline del primer
+mes es ficción.
+
+**La consecuencia, que es honesta y visible:** una oportunidad recién creada no
+tiene propuesta ni cotización congelada, así que las etapas de Propuesta en
+adelante fallan la compuerta y el formulario dice exactamente qué falta. El
+único requisito que sí puede cumplirse al nacer es
+`PERSONA_CON_ROL_DECLARADO`, porque la persona se captura en el mismo
+formulario.
+
+Nacer en etapa avanzada **deja fila en `StageTransition`** con `fromStageId`
+nulo. Sin ella, la oportunidad aparecería en Negociación sin que nada explicara
+cómo llegó.
+
+### 11.3 · Organización, persona y oportunidad se crean en una sola transacción
+
+No es un detalle de implementación. Si se crearan por separado y la oportunidad
+fallara después, cada captura abandonada a la mitad dejaría una empresa huérfana
+en el catálogo. Esa es la basura que nadie limpia. Hay una prueba que lo
+verifica: con un pipeline de otro país, la organización **no** queda.

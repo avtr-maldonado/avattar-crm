@@ -2947,6 +2947,20 @@ git commit -m "feat(E1): edición de catálogos desde P-11 (MD-05, AC-33)"
 
 ## Task 12: P-01 — alta de oportunidad
 
+> **Estado: hecha el 2-sep-2026, y más grande de lo que este plan decía.**
+>
+> El cliente pidió el formulario contra un boceto, y con él llegaron tres cosas
+> que no estaban aquí: autocompletado de organización con **alta en línea**,
+> autocompletado de persona, y selector de etapa en galones al estilo Pipedrive
+> con evaluación de compuerta al nacer. Lo entregado está en
+> `components/pipeline/` —`NuevaOportunidad`, `CamposDeContacto`,
+> `CamposComerciales`, `SelectorDeEtapa`, `estadoDeAlta`— y en
+> `components/ui/` —`formulario`, `Autocompletado`—.
+>
+> Las decisiones y sus razones, incluida la **única excepción a INV-01** del
+> sistema, están en `docs/decisiones-pendientes.md` §11. Los pasos de abajo
+> quedan como registro de lo planeado; lo construido los cubre y los excede.
+
 **Files:**
 - Create: `app/(app)/oportunidades/acciones.ts`, `components/pipeline/NuevaOportunidad.tsx`
 - Modify: `app/(app)/oportunidades/page.tsx`
