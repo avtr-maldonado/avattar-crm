@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "doctor": "react-doctor .",
+    "react-doctor": "react-doctor .",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

@@ -132,7 +132,7 @@ pnpm db:seed                # escenario del prototipo aprobado → §15
 pnpm test                   # unitarios de lib/domain
 pnpm test:e2e               # criterios de aceptación §14
 pnpm lint && pnpm typecheck
-pnpm doctor                 # react-doctor sobre las pantallas
+pnpm react-doctor           # calidad de las pantallas · NO `pnpm doctor`, ese es de pnpm
 ```
 
 **Migraciones:** el schema de Prisma es la fuente; Supabase lleva el historial aplicado. Se genera
@@ -142,7 +142,7 @@ migración ya aplicada.
 
 ## Al terminar una tarea
 
-1. Corre `pnpm typecheck`, `pnpm lint` y `pnpm test`. Si tocaste pantallas, `pnpm doctor`.
+1. Corre `pnpm typecheck`, `pnpm lint` y `pnpm test`. Si tocaste pantallas, `pnpm react-doctor`.
 2. Si tocaste la base, corre `get_advisors` del MCP y revisa que no haya hallazgos nuevos.
 3. Verifica que la tarea no violó ningún invariante, en especial `INV-01`, `INV-02` e `INV-05`.
 4. Cita en el commit qué regla de negocio implementa (`RN-13`, `HF-04`, `AC-22`…) — ayuda a

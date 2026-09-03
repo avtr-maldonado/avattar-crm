@@ -43,7 +43,7 @@ Cerradas con el responsable del proyecto el 1 de septiembre de 2026. Detalle en
 | **D-C** | Alcance de la primera entrega: E0 y E1 | E2 a E5 en ciclos posteriores |
 | **D-D** | Reemplazar el esquema v1, archivándolo | `supabase/migrations/_archivo_v1/` |
 | **D-E** | Adoptar los supuestos del spec y marcarlos | Este documento |
-| **D-F** | `react-doctor` como medida de calidad de React | `pnpm doctor` |
+| **D-F** | `react-doctor` como medida de calidad de React | `pnpm react-doctor` |
 
 ---
 
@@ -258,3 +258,76 @@ Corregido con un índice `NULLS NOT DISTINCT` (Postgres 15+), en la migración
 —no hay trimestre— en vez de inventar un centinela como 0. Prisma todavía no
 expresa esa cláusula en el schema, así que el índice se administra por
 migración y el `@@unique` se queda para que el cliente siga tipando la llave.
+
+---
+
+## 9. Hallazgos al construir la pantalla de productos (2 de septiembre de 2026)
+
+### 9.1 · El piso de margen por línea es incompatible con la reventa de licencias
+
+`LIC-M365-E3` cuesta 7 900 y se lista en 8 400: **6.0 % de margen a precio de
+lista**, contra un piso por línea de 10 % (`CommercialPolicy.lineMarginFloor`).
+
+No es un error de captura: es cómo funciona la reventa de licenciamiento, que es
+un negocio de paso con margen delgado por naturaleza. Pero significa que **ese
+SKU nace violando la política antes de cualquier descuento**, y RN-05 dice que
+una línea bajo el piso «se señala aunque el total cumpla».
+
+Consecuencia práctica: toda cotización que incluya licencias va a levantar una
+alerta de margen que nadie puede resolver bajando el precio, porque el problema
+está en el costo.
+
+**Hay tres salidas y son decisión del negocio:**
+
+1. **Piso por familia de producto.** Licenciamiento con un piso propio —5 %, por
+   decir— y servicios con el 10 %. Es un cambio de esquema: `lineMarginFloor`
+   pasaría de `CommercialPolicy` a `ProductFamily`, o a una tabla puente.
+2. **Exentar los modelos de paso.** `PriceModel` ya distingue
+   `RECURRENTE_ANUAL` y `POR_CONSUMO`; la regla podría no aplicar a esos.
+3. **Aceptar la alerta.** Que licencias siempre alerte, y que Gerencia la
+   autorice como trámite. Es la opción sin código, y la peor: enseña al equipo a
+   autorizar sin leer.
+
+Mientras se decide, el seed **topa el precio mínimo contra el precio de lista**,
+porque un piso por encima del techo no significa nada: con la derivación
+original `LIC-M365-E3` quedaba con mínimo 8 777 y lista 8 400, es decir, no se
+podía vender ni a precio de lista.
+
+### 9.2 · RN-09 no se sostiene si el margen y el precio se muestran juntos
+
+RN-09 dice que ver margen y ver costo son permisos **independientes**: «el
+vendedor conoce su margen sin conocer el costo unitario del proveedor».
+
+Aritméticamente eso no se puede sostener cuando ambos aparecen a la misma
+granularidad. Verificado con los datos reales:
+
+| SKU | Precio | Margen | Costo recuperado | Costo real |
+|---|---:|---:|---:|---:|
+| SRV-ARQ-001 | 18 000 | 47.2 % | **9 500** | 9 500 |
+| STF-DVO-012 | 165 000 | 28.5 % | **118 000** | 118 000 |
+| INF-SRV-R750 | 310 000 | 13.5 % | **268 000** | 268 000 |
+
+`costo = precio × (1 − margen)`. La recuperación es **exacta**, no aproximada.
+Es la misma aritmética que hacía inútil la vista `v_cotizacion_lineas_sin_costo`
+del esquema archivado, donde bastaba restar la utilidad del importe.
+
+**Lo que se implementó:** en P-06, sin `VER_COSTO` no se muestra el margen. El
+vendedor ve precio de lista y **precio mínimo**, que es el piso duro de RN-08 y
+lo que de verdad necesita para saber hasta dónde puede descontar. El margen no
+le aporta nada ahí y sí revela el costo.
+
+**Lo que queda por decidir:** en la **línea de cotización** el margen sí le sirve
+al vendedor —es lo que dispara la autorización— y ahí el mismo cálculo aplica.
+Las opciones son:
+
+1. **Aceptarlo.** Reconocer que un vendedor puede deducir el costo de lo que
+   cotiza, y que lo que RN-09 protege de verdad es el costo de los SKU que **no**
+   está cotizando. Es defendible y no cuesta nada.
+2. **Mostrar el margen en bandas** —«sobre el piso», «bajo el piso»— en vez del
+   porcentaje. Protege el costo y conserva la señal que importa, que es
+   semafórica y no numérica.
+3. **Quitarle el margen al vendedor.** Contradice RN-09 y le quita la
+   herramienta con la que se autorregula.
+
+La opción 2 es la que preserva ambas cosas, pero cambia lo que el vendedor ve en
+la pantalla que más usa. **Es decisión de Dirección, no técnica.**

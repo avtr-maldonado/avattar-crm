@@ -13,6 +13,10 @@
           "react-doctor/artifact-secret-leak",
           "react-doctor/artifact-baas-authority-surface"
         ]
+      },
+      {
+        "files": ["prisma/seed.ts"],
+        "rules": ["react-doctor/async-await-in-loop"]
       }
     ]
   }

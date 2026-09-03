@@ -240,19 +240,33 @@ export const FAMILIAS_PRODUCTO = [
 
 // ───────────────────────────────────────────────────────────── Productos
 
+/**
+ * Los ocho SKU de §15.
+ *
+ * `costoActualizadoHaceDias` no viene del spec: se agrega para que el riesgo
+ * C-01 sea visible en pantalla. Sin la integración con Defontana el costo
+ * estándar se mantiene a mano, y en una operación real no todos los SKU se
+ * actualizan el mismo día. P-06 marca en ámbar los que pasan de 60 días, que es
+ * justo la señal que el catálogo v2 pide para que nadie cotice contra un costo
+ * viejo y dispare —o deje de disparar— una autorización por un número obsoleto.
+ */
 export const PRODUCTOS = [
-  { sku: "SRV-ARQ-001", name: "Consultoría de arquitectura cloud", familia: "Servicios profesionales", unit: "día", priceModel: "PRECIO_FIJO", listPrice: "18000", standardCost: "9500" },
-  { sku: "STF-DVO-012", name: "Staffing DevOps Senior", familia: "Staffing", unit: "mes", priceModel: "TIEMPO_Y_MATERIALES", listPrice: "165000", standardCost: "118000" },
-  { sku: "LIC-M365-E3", name: "Licencia Microsoft 365 E3", familia: "Licenciamiento", unit: "usuario", priceModel: "RECURRENTE_ANUAL", listPrice: "8400", standardCost: "7900" },
-  { sku: "MSP-SOP-8X5", name: "Soporte administrado 8x5", familia: "Servicios administrados", unit: "mes", priceModel: "RECURRENTE", listPrice: "42000", standardCost: "26000" },
-  { sku: "MSP-SOP-24X7", name: "Soporte administrado 24x7", familia: "Servicios administrados", unit: "mes", priceModel: "RECURRENTE", listPrice: "78000", standardCost: "47000" },
-  { sku: "INF-SRV-R750", name: "Servidor rack Dell R750", familia: "Infraestructura", unit: "pieza", priceModel: "PRECIO_FIJO", listPrice: "310000", standardCost: "268000" },
-  { sku: "CAP-DEVSEC", name: "Capacitación DevSecOps", familia: "Capacitación", unit: "grupo", priceModel: "PRECIO_FIJO", listPrice: "96000", standardCost: "41000" },
-  { sku: "CLD-AWS-CONS", name: "Consumo AWS administrado", familia: "Nube", unit: "GB", priceModel: "POR_CONSUMO", listPrice: "120", standardCost: "96" },
+  { sku: "SRV-ARQ-001", name: "Consultoría de arquitectura cloud", familia: "Servicios profesionales", unit: "día", priceModel: "PRECIO_FIJO", listPrice: "18000", standardCost: "9500", costoActualizadoHaceDias: 12 },
+  { sku: "STF-DVO-012", name: "Staffing DevOps Senior", familia: "Staffing", unit: "mes", priceModel: "TIEMPO_Y_MATERIALES", listPrice: "165000", standardCost: "118000", costoActualizadoHaceDias: 8 },
+  { sku: "LIC-M365-E3", name: "Licencia Microsoft 365 E3", familia: "Licenciamiento", unit: "usuario", priceModel: "RECURRENTE_ANUAL", listPrice: "8400", standardCost: "7900", costoActualizadoHaceDias: 145 },
+  { sku: "MSP-SOP-8X5", name: "Soporte administrado 8x5", familia: "Servicios administrados", unit: "mes", priceModel: "RECURRENTE", listPrice: "42000", standardCost: "26000", costoActualizadoHaceDias: 34 },
+  { sku: "MSP-SOP-24X7", name: "Soporte administrado 24x7", familia: "Servicios administrados", unit: "mes", priceModel: "RECURRENTE", listPrice: "78000", standardCost: "47000", costoActualizadoHaceDias: 34 },
+  { sku: "INF-SRV-R750", name: "Servidor rack Dell R750", familia: "Infraestructura", unit: "pieza", priceModel: "PRECIO_FIJO", listPrice: "310000", standardCost: "268000", costoActualizadoHaceDias: 201 },
+  { sku: "CAP-DEVSEC", name: "Capacitación DevSecOps", familia: "Capacitación", unit: "grupo", priceModel: "PRECIO_FIJO", listPrice: "96000", standardCost: "41000", costoActualizadoHaceDias: 19 },
+  { sku: "CLD-AWS-CONS", name: "Consumo AWS administrado", familia: "Nube", unit: "GB", priceModel: "POR_CONSUMO", listPrice: "120", standardCost: "96", costoActualizadoHaceDias: 88 },
 ] as const satisfies readonly {
   sku: string; name: string; familia: string; unit: string;
   priceModel: PriceModel; listPrice: string; standardCost: string;
+  costoActualizadoHaceDias: number;
 }[];
+
+/** §11 P-06 · sobre esta antigüedad, el costo se marca en ámbar (C-01). */
+export const DIAS_COSTO_OBSOLETO = 60;
 
 // ───────────────────────────────────────────────────────── Organizaciones
 
