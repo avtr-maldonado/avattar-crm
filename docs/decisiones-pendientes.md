@@ -331,3 +331,52 @@ Las opciones son:
 
 La opción 2 es la que preserva ambas cosas, pero cambia lo que el vendedor ve en
 la pantalla que más usa. **Es decisión de Dirección, no técnica.**
+
+---
+
+## 10. Reglas derivadas al diseñar las mutaciones (2 de septiembre de 2026)
+
+Ninguna de las dos está en el spec. Se derivaron de lo que sí dice, se
+implementaron para poder construir, y **necesitan confirmación del Director**
+junto con `Q-01`, que es de la misma familia: quién ve y quién mueve qué.
+
+### Q-13 · Quién puede reasignar una oportunidad
+
+**Lo que el spec dice:** nada explícito. La matriz de permisos de §5.2 tiene
+once entradas y ninguna es «cambiar propietario». Lo único que hay es el
+escenario de `RN-31`: «*el Gerente* cambia el propietario a Gabriel».
+
+**Lo que se asumió:** puede reasignar quien tenga `VER_OPORTUNIDADES_OFICINA`.
+Eso da Gerencia, Dirección y Administración, y deja fuera al vendedor.
+
+**Por qué.** Si un vendedor pudiera cambiar el propietario, podría quitarse de
+encima una oportunidad que va mal —y con ella su renglón de objetivos— o
+tomar la de un compañero. Ninguna de las dos deja rastro visible en el pipeline
+de nadie más, porque la oportunidad simplemente cambia de columna.
+
+La condición se lee de `RolePermission`, no de un `switch` por rol. Si mañana el
+negocio decide que Preventa también reasigna, es una fila en la base y no un
+despliegue.
+
+**Dónde vive:** `lib/domain/opportunity.ts`.
+**Costo de cambiarla:** una línea.
+
+### Q-14 · A quién se le puede reasignar
+
+**Lo que se asumió:** solo a usuarios activos cuyo `countryCodes` incluya el
+país de la oportunidad.
+
+**Por qué.** Sin esta condición `AC-05` se rompe por la puerta de atrás. El
+criterio exige que un `GERENTE_PAIS` de México no obtenga **ninguna**
+oportunidad de Colombia por ningún filtro. Pero si el gerente mexicano pudiera
+reasignar una oportunidad suya a un vendedor colombiano, ese vendedor la vería
+en su pipeline: el alcance por país se habría aplicado correctamente en cada
+consulta y aun así el dato habría cruzado la frontera. La fuga no está en el
+filtro, está en la escritura.
+
+Es más restrictiva que el spec, a propósito. Relajarla obliga a decidir antes
+qué significa una oportunidad cuyo dueño no opera en su país: de quién es la
+cuota que avanza, qué política comercial le aplica, quién la autoriza.
+
+**Dónde vive:** la consulta de destinatarios válidos en `lib/domain/opportunity.ts`.
+**Costo de cambiarla:** una condición.
