@@ -153,7 +153,7 @@ export async function crearOportunidad(
   session: Session,
   input: EntradaDeAlta,
   umbrales: { meddicMinToClosing: number },
-): Promise<ResultadoAccion<{ id: string; folio: string }>> {
+): Promise<ResultadoAccion<{ id: string; folio: string; gateOverride: boolean }>> {
   if (!input.organizationId === !input.organizacionNueva) {
     return falla("VALIDACION", {
       campo: "organizationId",
@@ -361,5 +361,8 @@ export async function crearOportunidad(
     return oportunidad;
   });
 
-  return ok(creada);
+  // `gateOverride` sale con el resultado porque quien creó la oportunidad tiene
+  // que enterarse: quedó registrada como incumplimiento y alimenta el reporte
+  // semanal de §8.3. Enterarse por el reporte, una semana después, es tarde.
+  return ok({ ...creada, gateOverride: decision.gateOverride });
 }

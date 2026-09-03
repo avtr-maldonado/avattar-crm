@@ -1,9 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { z } from "zod";
-import { deZod, falla, type ResultadoAccion } from "@/lib/acciones";
+import { deZod, falla, ok, type ResultadoAccion } from "@/lib/acciones";
 import { requireSession } from "@/lib/auth/session";
 import { crearOportunidad } from "@/lib/domain/opportunity";
 import { getCommercialPolicy } from "@/lib/policy";
@@ -94,9 +93,9 @@ const esquema = z.object({
 });
 
 export async function crearOportunidadAccion(
-  _previo: ResultadoAccion<{ id: string; folio: string }> | null,
+  _previo: ResultadoAccion<{ id: string; folio: string; gateOverride: boolean }> | null,
   form: FormData,
-): Promise<ResultadoAccion<{ id: string; folio: string }>> {
+): Promise<ResultadoAccion<{ id: string; folio: string; gateOverride: boolean }>> {
   const datos = esquema.safeParse(Object.fromEntries(form));
   if (!datos.success) return deZod(datos.error);
   const d = datos.data;
@@ -148,8 +147,18 @@ export async function crearOportunidadAccion(
   revalidatePath("/oportunidades");
   revalidatePath("/contactos");
 
-  // §12.1 · el alta termina donde empieza el trabajo, no en la lista. El
-  // `redirect` del servidor cierra el modal por sí solo, porque la página que
-  // lo contiene deja de estar montada.
-  redirect(`/oportunidades/${resultado.datos.id}`);
+  /**
+   * Devuelve el resultado en vez de `redirect()`, y esto es deliberado.
+   *
+   * Un `redirect` del servidor destruye el resultado antes de que el cliente lo
+   * vea, y con él la confirmación del folio y la advertencia de compuerta
+   * omitida. El aviso tiene que dispararse **antes** de cambiar de pantalla; el
+   * `Toaster` vive en el layout del grupo, así que sobrevive a la navegación y
+   * sigue visible al llegar al detalle.
+   *
+   * react-doctor prefiere la navegación del servidor y en general tiene razón.
+   * Aquí no: la razón para navegar desde el cliente no es comodidad, es que el
+   * usuario se entere de lo que acaba de pasar.
+   */
+  return ok(resultado.datos);
 }

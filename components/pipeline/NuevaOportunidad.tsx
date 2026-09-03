@@ -1,10 +1,12 @@
 "use client";
 
-import { useActionState, useCallback, useReducer, useState } from "react";
+import { useActionState, useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { ResultadoAccion } from "@/lib/acciones";
 import { problemaDe } from "@/lib/acciones";
 import { Boton } from "@/components/ui/primitivas";
 import { AvisosDeAccion, Campo, Entrada, Panel } from "@/components/ui/formulario";
+import { avisar, avisarSiCorresponde } from "@/components/ui/avisos";
 import type { Eleccion, Sugerencia } from "@/components/ui/Autocompletado";
 import { CamposDeContacto } from "./CamposDeContacto";
 import { CamposComerciales } from "./CamposComerciales";
@@ -18,7 +20,7 @@ export type PipelineElegible = {
   stages: EtapaElegible[];
 };
 
-type Resultado = ResultadoAccion<{ id: string; folio: string }>;
+type Resultado = ResultadoAccion<{ id: string; folio: string; gateOverride: boolean }>;
 
 function primeraEtapaDe(pipeline: PipelineElegible | undefined): string {
   return pipeline?.stages[0]?.id ?? "";
@@ -60,9 +62,11 @@ export function NuevaOportunidad({
   buscarPersonas: (organizationId: string, texto: string) => Promise<Sugerencia[]>;
   accion: (previo: Resultado | null, form: FormData) => Promise<Resultado>;
 }) {
+  const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [resultado, enviar, enviando] = useActionState(accion, null);
   const [estado, despachar] = useReducer(reducir, ESTADO_INICIAL);
+  const yaAtendido = useRef<Resultado | null>(null);
 
   const [pipelineId, setPipelineId] = useState(() => pipelines[0]?.id ?? "");
   const [stageId, setStageId] = useState(() => primeraEtapaDe(pipelines[0]));
@@ -96,6 +100,41 @@ export function NuevaOportunidad({
     setPipelineId(id);
     setStageId(primeraEtapaDe(pipelines.find((p) => p.id === id)));
   }
+
+  /**
+   * Lo que pasa cuando la acción responde.
+   *
+   * Los problemas de campo, compuerta y confirmación **no** se avisan aquí: ya
+   * se pintan dentro del formulario, que es donde se corrigen (§13.5). Solo
+   * salen en aviso los que no tienen nada que corregir en pantalla —no puedes,
+   * o algo cambió—, y eso lo decide `avisarSiCorresponde` en un solo lugar para
+   * que ningún problema se muestre dos veces.
+   */
+  useEffect(() => {
+    if (!resultado || yaAtendido.current === resultado) return;
+    yaAtendido.current = resultado;
+
+    if (!resultado.ok) {
+      avisarSiCorresponde(resultado);
+      return;
+    }
+
+    avisar.exito("Oportunidad creada", resultado.datos.folio);
+
+    // §8.3 · avanzar pese a una compuerta queda registrado y alimenta el reporte
+    // semanal de incumplimiento. Enterarse por ese reporte, una semana después,
+    // es enterarse tarde.
+    if (resultado.datos.gateOverride) {
+      avisar.advertencia(
+        "Nació sin cumplir los requisitos de la etapa",
+        "Queda registrado en su historial y en el reporte semanal de incumplimiento.",
+      );
+    }
+
+    // Sin `setAbierto(false)`: navegar desmonta este componente y el modal se
+    // va con él. Cerrarlo antes solo provocaría un render de más.
+    router.push(`/oportunidades/${resultado.datos.id}`);
+  }, [resultado, router]);
 
   function limpiar() {
     despachar({ tipo: "LIMPIAR" });

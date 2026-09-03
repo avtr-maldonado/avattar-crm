@@ -3,6 +3,7 @@ import { can } from "@/lib/auth/permissions";
 import { contadoresDeNavegacion } from "@/lib/scope/contadores";
 import { BarraLateral, type SeccionNavegacion } from "@/components/ui/BarraLateral";
 import { NavegacionAngosta } from "@/components/ui/NavegacionAngosta";
+import { Notificaciones } from "@/components/ui/Notificaciones";
 import { iniciales } from "@/lib/etiquetas";
 
 /**
@@ -74,6 +75,13 @@ export default async function AppLayout({
         <NavegacionAngosta rubros={[...comercial, ...sistema]} />
         {children}
       </div>
+
+      {/*
+        Montado una sola vez, aquí: sobrevive a la navegación dentro del grupo,
+        y eso es lo que permite avisar antes de cambiar de pantalla y que el
+        aviso siga visible al llegar.
+      */}
+      <Notificaciones />
     </div>
   );
 }

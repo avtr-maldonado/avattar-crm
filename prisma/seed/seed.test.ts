@@ -73,8 +73,15 @@ describe("seed §15 · totales del prototipo", () => {
 describe("seed §15 · integridad del escenario", () => {
   it("siembra las 14 organizaciones que las oportunidades usan", async () => {
     // §15 declara nueve, pero las oportunidades referencian catorce.
-    const total = await prisma.organization.count({ where: { deletedAt: null } });
-    expect(total).toBe(ORGANIZACIONES.length);
+    //
+    // Se verifica que las catorce ESTÉN, no que sean las únicas: dar de alta
+    // una oportunidad puede crear una organización nueva, y eso es la
+    // aplicación funcionando, no el seed roto.
+    const sembradas = await prisma.organization.findMany({
+      where: { deletedAt: null, name: { in: ORGANIZACIONES.map((o) => o.name) } },
+      select: { name: true },
+    });
+    expect(sembradas).toHaveLength(ORGANIZACIONES.length);
     expect(ORGANIZACIONES.filter((o) => !o.declaradaEnSpec)).toHaveLength(5);
   });
 
@@ -148,6 +155,8 @@ describe("seed §15 · integridad del escenario", () => {
       by: ["opportunityId"],
       _count: true,
     });
+    // Las evaluaciones existen solo para lo sembrado: las altas nuevas no
+    // traen MEDDIC hasta E3.
     expect(conteos).toHaveLength(OPORTUNIDADES.length);
     for (const c of conteos) expect(c._count).toBe(6);
   });
@@ -155,7 +164,11 @@ describe("seed §15 · integridad del escenario", () => {
   it("el puntaje de CADA oportunidad coincide con el que calcula la fórmula", async () => {
     // Si el número desnormalizado y el calculado divergen, la tarjeta del
     // kanban miente.
+    // Solo las sembradas: una oportunidad recién dada de alta no tiene
+    // evaluaciones MEDDIC todavía —llegan con E3— y compararla contra la
+    // fórmula sería exigirle un puntaje que nadie ha capturado.
     const todas = await prisma.opportunity.findMany({
+      where: { folio: { in: OPORTUNIDADES.map((o) => o.folio) } },
       select: { folio: true, meddicScore: true, meddic: { select: { component: true, status: true } } },
     });
 

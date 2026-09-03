@@ -8,15 +8,30 @@
     ],
     "overrides": [
       {
-        "files": ["app/(auth)/login/**", ".next/**"],
+        "files": [
+          "app/(auth)/login/**",
+          ".next/**"
+        ],
         "rules": [
           "react-doctor/artifact-secret-leak",
           "react-doctor/artifact-baas-authority-surface"
         ]
       },
       {
-        "files": ["prisma/seed.ts"],
-        "rules": ["react-doctor/async-await-in-loop"]
+        "files": [
+          "prisma/seed.ts"
+        ],
+        "rules": [
+          "react-doctor/async-await-in-loop"
+        ]
+      },
+      {
+        "files": [
+          "components/pipeline/NuevaOportunidad.tsx"
+        ],
+        "rules": [
+          "react-doctor/nextjs-no-client-side-redirect"
+        ]
       }
     ]
   }

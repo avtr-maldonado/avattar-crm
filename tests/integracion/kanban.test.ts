@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Session } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/db";
+import { OPORTUNIDADES } from "@/prisma/seed/datos";
 import { listOpportunities } from "@/lib/scope";
 import { listPipelines, pipelinePorOmision } from "@/lib/scope/pipelines";
 import { getCommercialPolicy } from "@/lib/policy";
@@ -45,12 +46,26 @@ async function sesionDe(correo: string): Promise<Session> {
 }
 
 /** Arma las columnas igual que la pantalla, para probar esa lógica. */
+/**
+ * Estas cifras se miden **sobre el escenario sembrado**, no sobre toda la base.
+ *
+ * La igualdad exacta con §15 valía mientras la aplicación era de solo lectura.
+ * Dejó de valer el día que se puede dar de alta una oportunidad: contar todo lo
+ * que hay en México convertiría esta prueba en «nadie ha usado el sistema», que
+ * no es lo que promete. Promete que el seed reprodujo el escenario que Dirección
+ * aprobó, y eso sigue siendo cierto aunque encima haya trabajo real.
+ */
+const FOLIOS_SEMBRADOS = new Set(OPORTUNIDADES.map((o) => o.folio));
+
 async function columnasDe(session: Session) {
-  const [pipelines, oportunidades] = await Promise.all([
+  const [pipelines, todas] = await Promise.all([
     listPipelines(session),
     listOpportunities(session),
   ]);
   const pipeline = pipelinePorOmision(pipelines, session)!;
+  // Pasa por `lib/scope` como la pantalla real, y después se queda con el
+  // escenario de §15 para poder compararlo contra la maqueta aprobada.
+  const oportunidades = todas.filter((o) => FOLIOS_SEMBRADOS.has(o.folio));
 
   return pipeline.stages.map((etapa) => {
     const deLaEtapa = oportunidades.filter((o) => o.stage.id === etapa.id);
@@ -163,6 +178,10 @@ describe("tablero kanban · señales visuales", () => {
     ]);
 
     const conBandera = oportunidades
+      // Sobre el escenario de §15: las altas reales también levantan banderas
+      // —una oportunidad nueva sin próxima actividad la levanta, y debe—, pero
+      // la cifra que este criterio compara es la del prototipo aprobado.
+      .filter((o) => FOLIOS_SEMBRADOS.has(o.folio))
       .map((o) => ({ folio: o.folio, banderas: computeRiskFlags(o, o.stage, politica, AHORA) }))
       .filter((o) => o.banderas.length > 0);
 

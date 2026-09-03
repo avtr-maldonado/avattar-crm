@@ -4,6 +4,19 @@ import { computeRiskFlags, type RiskFlag } from "@/lib/domain/riskFlags";
 import { openTotal, weightedTotal } from "@/lib/domain/pipeline";
 import { getCommercialPolicy } from "@/lib/policy";
 import { money, sum, type Money } from "@/lib/money";
+import { OPORTUNIDADES } from "./datos";
+
+/**
+ * Los folios que el seed siembra.
+ *
+ * **Estas verificaciones se acotan al escenario sembrado, no a toda la base.**
+ * La igualdad exacta con §15 valía mientras la aplicación era de solo lectura;
+ * dejó de valer el día que se puede dar de alta una oportunidad. Contar todo lo
+ * que hay en México convertiría estas pruebas en «nadie ha usado el sistema»,
+ * que no es lo que prometen: prometen que **el seed reprodujo el escenario que
+ * Dirección aprobó**, y eso sigue siendo cierto aunque encima haya trabajo real.
+ */
+const FOLIOS_SEMBRADOS = OPORTUNIDADES.map((o) => o.folio);
 
 /**
  * Los agregados que el seed promete.
@@ -23,7 +36,12 @@ export type ResumenPipeline = {
 /** Valor abierto y ponderado de las oportunidades abiertas de un país. */
 export async function resumenDePipeline(pais: CountryCode): Promise<ResumenPipeline> {
   const abiertas = await prisma.opportunity.findMany({
-    where: { status: "ABIERTA", deletedAt: null, countryCode: pais },
+    where: {
+      status: "ABIERTA",
+      deletedAt: null,
+      countryCode: pais,
+      folio: { in: FOLIOS_SEMBRADOS },
+    },
     select: { amount: true, stage: { select: { probability: true } } },
   });
 
@@ -56,7 +74,12 @@ export async function resumenDeRiesgo(
   const politica = await getCommercialPolicy(pais);
 
   const abiertas = await prisma.opportunity.findMany({
-    where: { status: "ABIERTA", deletedAt: null, countryCode: pais },
+    where: {
+      status: "ABIERTA",
+      deletedAt: null,
+      countryCode: pais,
+      folio: { in: FOLIOS_SEMBRADOS },
+    },
     select: {
       folio: true,
       amount: true,

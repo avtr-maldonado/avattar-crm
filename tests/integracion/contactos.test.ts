@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Session } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/db";
+import { ORGANIZACIONES } from "@/prisma/seed/datos";
 import { toClient } from "@/lib/money";
 import {
   getOrganizationDetail,
@@ -44,9 +45,18 @@ const cuentaPorNombre = async (nombre: string) =>
 
 describe("P-03 · qué cuentas se ven · §5.3", () => {
   it("el gerente ve las catorce de su oficina", async () => {
+    // Lo que este criterio prueba es el **alcance**: un gerente ve todas las
+    // cuentas de su país, no solo las suyas. Se verifica que las catorce
+    // sembradas estén, no que sean las únicas —dar de alta una oportunidad
+    // puede crear una cuenta nueva, y eso es el sistema funcionando.
     const jorge = await sesionDe("jm@avattar.com");
     const { organizaciones } = await listOrganizationsConIndicadores(jorge);
-    expect(organizaciones).toHaveLength(14);
+    const vistas = new Set(organizaciones.map((o) => o.name));
+
+    for (const sembrada of ORGANIZACIONES) {
+      expect(vistas.has(sembrada.name), `no ve ${sembrada.name}`).toBe(true);
+    }
+    expect(organizaciones.length).toBeGreaterThanOrEqual(ORGANIZACIONES.length);
   });
 
   it("el vendedor ve las suyas Y aquellas donde tiene una oportunidad", async () => {
