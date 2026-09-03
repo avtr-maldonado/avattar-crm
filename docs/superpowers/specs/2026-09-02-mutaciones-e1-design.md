@@ -139,10 +139,21 @@ cambiarEtapa(input: {
 **Qué escribe, en una transacción:** `stageId`, `stageEnteredAt = now()`, y una fila de
 `StageTransition` con `fromStageId`, `toStageId`, `byUserId` y `gateOverride`.
 
-**La compuerta.** Arma el `GateContext` con una sola consulta —documentos, cotizaciones, hitos,
-MEDDIC y autorizaciones de la oportunidad— y lo pasa a `evaluateGate` con
-`stage.gateRequires`. El mínimo MEDDIC sale de `CommercialPolicy` del país, nunca de una
-constante (INV-05).
+**La compuerta.** No hay que armar el `GateContext` a mano: `getOpportunityDetail` ya trae los
+insumos —documentos, cotización congelada, hitos, MEDDIC y autorizaciones— y
+`contextoDeCompuerta` ya los traduce. El servicio compone lo que existe:
+
+```
+getOpportunityDetail(session, id)   ← alcance aplicado (INV-01) y contexto en una consulta
+  → contextoDeCompuerta(detalle, umbrales)
+  → evaluateGate(stageDestino.gateRequires, ctx)
+```
+
+**El umbral llega por parámetro, no lo lee el dominio.** La prueba de AC-31 verifica que ningún
+archivo de `lib/domain` importe `lib/policy`: «los umbrales entran por parámetro, no por
+importación», para que las funciones sigan siendo probables sin base. Así que la Server Action lee
+`getCommercialPolicy(pais)` y le pasa al servicio `umbrales: { meddicMinToClosing: number }`.
+Ninguna constante en el camino (INV-05).
 
 **`gateMode` decide qué pasa con los faltantes:**
 
