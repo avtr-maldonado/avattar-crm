@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth/session";
 import { listOrganizationsConIndicadores } from "@/lib/scope/organizationIndicators";
+import { listPersonas } from "@/lib/scope/people";
+import { catalogosParaAlta } from "@/lib/scope/configuracion";
+import { Pestanas, type Pestana } from "@/components/oportunidad/Pestanas";
+import { EditarPersona } from "@/components/contactos/EditarPersona";
+import { editarPersonaAccion } from "./acciones";
 import { formatUSD } from "@/lib/money";
 import { iniciales, NOMBRE_PAIS } from "@/lib/etiquetas";
 import { BarraSuperior } from "@/components/ui/BarraSuperior";
@@ -30,10 +35,26 @@ import { Avatar, Boton, EstadoVacio, Pastilla, StatTile } from "@/components/ui/
  */
 const DIAS_SIN_ACTIVIDAD = 30;
 
-export default async function ContactosPage() {
-  const session = await requireSession();
-  const { organizaciones, hayHistoricoDeCierres } =
-    await listOrganizationsConIndicadores(session);
+export default async function ContactosPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const [session, sp] = await Promise.all([requireSession(), searchParams]);
+
+  const [{ organizaciones, hayHistoricoDeCierres }, personas, catalogos] = await Promise.all([
+    listOrganizationsConIndicadores(session),
+    listPersonas(session),
+    catalogosParaAlta(),
+  ]);
+
+  // La pestaña vive en la URL (INV-10): la vista es compartible y el botón de
+  // regresar funciona.
+  const pestanaActiva = sp.t === "personas" ? "personas" : "organizaciones";
+  const pestanas: Pestana[] = [
+    { clave: "organizaciones", etiqueta: "Organizaciones", contador: organizaciones.length },
+    { clave: "personas", etiqueta: "Personas", contador: personas.length },
+  ];
 
   const ahora = new Date();
   const conPipeline = organizaciones.filter((o) => o.indicadores.abiertas > 0);
@@ -45,7 +66,7 @@ export default async function ContactosPage() {
     <>
       <BarraSuperior
         titulo="Contactos"
-        subtitulo={`${organizaciones.length} cuentas visibles · ${conPipeline.length} con pipeline abierto`}
+        subtitulo={`${organizaciones.length} cuentas · ${personas.length} personas · ${conPipeline.length} con pipeline abierto`}
         usuario={{
           nombre: session.name,
           iniciales: iniciales(session.name),
@@ -55,7 +76,20 @@ export default async function ContactosPage() {
       />
 
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Pestanas
+          pestanas={pestanas}
+          activa={pestanaActiva}
+          hrefDe={(clave) => `/contactos?t=${clave}`}
+        />
+
+        {pestanaActiva === "personas" ? (
+          <TablaDePersonas
+            personas={personas}
+            rolesDeComite={catalogos.rolesComite}
+          />
+        ) : (
+        <>
+        <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatTile
             etiqueta="Cuentas"
             valor={String(organizaciones.length)}
@@ -164,8 +198,108 @@ export default async function ContactosPage() {
             </table>
           </div>
         )}
+        </>
+        )}
       </div>
     </>
+  );
+}
+
+/**
+ * La pestaña de personas.
+ *
+ * El rol en el comité va primero después del nombre: es lo que convierte una
+ * lista de contactos en un mapa de quién decide (§2.1). Un directorio sin roles
+ * es una agenda telefónica.
+ */
+function TablaDePersonas({
+  personas,
+  rolesDeComite,
+}: {
+  personas: Awaited<ReturnType<typeof listPersonas>>;
+  rolesDeComite: { id: string; name: string }[];
+}) {
+  if (personas.length === 0) {
+    return (
+      <div className="mt-6">
+        <EstadoVacio
+          titulo="No hay personas capturadas"
+          explicacion="Los contactos se agregan desde la ficha de su empresa, o al dar de alta una oportunidad."
+          accion={
+            <Boton href="/contactos" variante="secundario">
+              Ver organizaciones
+            </Boton>
+          }
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 overflow-x-auto rounded-md border border-borde">
+      <table className="w-full border-collapse text-sm">
+        <thead className="bg-superficie-sutil">
+          <tr className="text-left">
+            <Th>Persona</Th>
+            <Th>Rol en el comité</Th>
+            <Th>Empresa</Th>
+            <Th>Correo</Th>
+            <Th>Teléfono</Th>
+            <Th alineacion="derecha">&nbsp;</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {personas.map((p) => (
+            <tr
+              key={p.id}
+              className="border-t border-borde transition-colors duration-rapido hover:bg-superficie-sutil"
+            >
+              <td className="px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <Avatar iniciales={p.initials} titulo={p.name} />
+                  <div className="min-w-0">
+                    <p className="font-medium text-texto-titulo">{p.name}</p>
+                    {p.jobTitle && <p className="text-xs text-texto-tenue">{p.jobTitle}</p>}
+                  </div>
+                </div>
+              </td>
+              <td className="px-3 py-2.5">
+                {p.committeeRole ? (
+                  <Pastilla tono="acento">{p.committeeRole.name}</Pastilla>
+                ) : (
+                  <span className="text-xs text-texto-tenue">Sin declarar</span>
+                )}
+              </td>
+              <td className="px-3 py-2.5">
+                <Link
+                  href={`/contactos/organizaciones/${p.organization.id}`}
+                  className="text-texto-cuerpo hover:text-acento"
+                >
+                  {p.organization.name}
+                </Link>
+              </td>
+              <td className="px-3 py-2.5 text-texto-tenue">{p.email ?? "—"}</td>
+              <td className="tabular px-3 py-2.5 text-texto-tenue">{p.phone ?? "—"}</td>
+              <td className="px-3 py-2.5 text-right">
+                <EditarPersona
+                  persona={{
+                    id: p.id,
+                    name: p.name,
+                    jobTitle: p.jobTitle,
+                    email: p.email,
+                    phone: p.phone,
+                    committeeRoleId: p.committeeRole?.id ?? null,
+                  }}
+                  rolesDeComite={rolesDeComite}
+                  accion={editarPersonaAccion}
+                  variante="fantasma"
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

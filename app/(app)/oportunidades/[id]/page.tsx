@@ -18,6 +18,8 @@ import { Pestanas, type Pestana } from "@/components/oportunidad/Pestanas";
 import { ListaDeRequisitos } from "@/components/oportunidad/ListaDeRequisitos";
 import { CambioDeEtapa } from "@/components/oportunidad/CambioDeEtapa";
 import { RegistrarActividad } from "@/components/oportunidad/RegistrarActividad";
+import { EditarPersona } from "@/components/contactos/EditarPersona";
+import { crearPersonaAccion, editarPersonaAccion } from "../../contactos/acciones";
 import { EditarOportunidad } from "@/components/oportunidad/EditarOportunidad";
 import { catalogosParaAlta, tiposDeActividad } from "@/lib/scope/configuracion";
 import { destinatariosValidos } from "@/lib/domain/opportunity";
@@ -149,7 +151,12 @@ export default async function DetalleOportunidadPage({
               }
             />
           ) : (
-            <TabResumen o={oportunidad} politica={politica} congeladaExiste={congelada != null} />
+            <TabResumen
+              o={oportunidad}
+              politica={politica}
+              congeladaExiste={congelada != null}
+              rolesDeComite={catalogos.rolesComite}
+            />
           )}
         </div>
       </div>
@@ -324,10 +331,12 @@ function TabResumen({
   o,
   politica,
   congeladaExiste,
+  rolesDeComite,
 }: {
   o: DetalleOportunidad;
   politica: Politica;
   congeladaExiste: boolean;
+  rolesDeComite: { id: string; name: string }[];
 }) {
   // La etapa siguiente es la accionable: los requisitos de la actual ya se
   // cumplieron al entrar (§8.3).
@@ -356,7 +365,20 @@ function TabResumen({
           </dl>
         </Tarjeta>
 
-        <Tarjeta titulo="Comité de compra">
+        <Tarjeta
+          titulo="Comité de compra"
+          accion={
+            // Q-15 · capturar al contacto que acabas de conocer es parte de
+            // trabajar la oportunidad, así que basta con alcanzar la cuenta.
+            <EditarPersona
+              organizationId={o.organization.id}
+              rolesDeComite={rolesDeComite}
+              accion={crearPersonaAccion}
+              etiquetaBoton="Agregar"
+              variante="fantasma"
+            />
+          }
+        >
           {o.organization.people.length === 0 ? (
             <p className="text-sm text-texto-tenue">
               La cuenta todavía no tiene personas registradas. El comité de compra es
@@ -367,7 +389,7 @@ function TabResumen({
               {o.organization.people.map((p) => (
                 <li key={p.id} className="flex items-center gap-3">
                   <Avatar iniciales={p.initials} titulo={p.name} />
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-texto-titulo">
                       {p.name}
                       {p.id === o.primaryPerson?.id && (
@@ -381,6 +403,21 @@ function TabResumen({
                         "Sin rol declarado"}
                     </p>
                   </div>
+                  {/* Aquí es donde se descubre que el cargo cambió, así que
+                      aquí tiene que poder corregirse. */}
+                  <EditarPersona
+                    persona={{
+                      id: p.id,
+                      name: p.name,
+                      jobTitle: p.jobTitle,
+                      email: p.email ?? null,
+                      phone: null,
+                      committeeRoleId: p.committeeRole?.id ?? null,
+                    }}
+                    rolesDeComite={rolesDeComite}
+                    accion={editarPersonaAccion}
+                    variante="fantasma"
+                  />
                 </li>
               ))}
             </ul>
@@ -507,13 +544,20 @@ function TabActividades({
 function Tarjeta({
   titulo,
   children,
+  accion,
 }: {
   titulo: string | null;
   children: React.ReactNode;
+  accion?: React.ReactNode;
 }) {
   return (
     <section className="rounded-md border border-borde bg-superficie-tarjeta p-5">
-      {titulo && <h2 className="mb-4 text-sm font-semibold text-texto-titulo">{titulo}</h2>}
+      {(titulo || accion) && (
+        <div className="mb-4 flex items-center justify-between gap-2">
+          {titulo && <h2 className="text-sm font-semibold text-texto-titulo">{titulo}</h2>}
+          {accion}
+        </div>
+      )}
       {children}
     </section>
   );

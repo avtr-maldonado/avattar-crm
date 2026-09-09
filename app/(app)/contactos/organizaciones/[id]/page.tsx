@@ -1,6 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
+import { catalogosParaAlta } from "@/lib/scope/configuracion";
+import { destinatariosValidos } from "@/lib/domain/opportunity";
+import { EditarOrganizacion } from "@/components/contactos/EditarOrganizacion";
+import { EditarPersona } from "@/components/contactos/EditarPersona";
+import {
+  crearPersonaAccion,
+  editarOrganizacionAccion,
+  editarPersonaAccion,
+} from "../../acciones";
 import { listActivities } from "@/lib/scope";
 import {
   getOrganizationDetail,
@@ -43,10 +53,18 @@ export default async function FichaDeOrganizacionPage({
   // la cuenta del compañero existe.
   if (!cuenta) notFound();
 
-  const [indicadores, oportunidades, actividades] = await Promise.all([
+  const puedeReasignar = can(session, "VER_OPORTUNIDADES_OFICINA");
+  // Q-15 · la ficha es del dueño de la cuenta. Alcanzarla por tener una
+  // oportunidad ahí (§5.3) da lectura, no edición. La pantalla lo pregunta para
+  // no ofrecer un botón que el servidor va a rechazar.
+  const puedeEditarFicha = cuenta.owner.id === session.userId || puedeReasignar;
+
+  const [indicadores, oportunidades, actividades, catalogos, propietarios] = await Promise.all([
     indicadoresDeCuenta(session, cuenta.id),
     oportunidadesDeCuenta(session, cuenta.id),
     listActivities(session, { where: { organizationId: cuenta.id }, take: 25 }),
+    catalogosParaAlta(),
+    puedeReasignar ? destinatariosValidos(cuenta.countryCode) : Promise.resolve([]),
   ]);
 
   const abiertas = oportunidades.filter((o) => o.status === "ABIERTA");
@@ -87,7 +105,28 @@ export default async function FichaDeOrganizacionPage({
               </Link>
             </Pastilla>
           )}
-          <div className="ml-auto">
+          <div className="ml-auto flex gap-2">
+            {puedeEditarFicha && (
+              <EditarOrganizacion
+                organizacion={{
+                  id: cuenta.id,
+                  name: cuenta.name,
+                  legalName: cuenta.legalName,
+                  taxId: cuenta.taxId,
+                  type: cuenta.type,
+                  industry: cuenta.industry,
+                  city: cuenta.city,
+                  countryCode: cuenta.countryCode,
+                  employees: cuenta.employees,
+                  creditDays: cuenta.creditDays,
+                  isStrategic: cuenta.isStrategic,
+                  ownerId: cuenta.owner.id,
+                }}
+                propietarios={propietarios.map((u) => ({ id: u.id, name: u.name }))}
+                puedeReasignar={puedeReasignar}
+                accion={editarOrganizacionAccion}
+              />
+            )}
             <Boton href="/contactos" variante="secundario">
               Volver a contactos
             </Boton>
@@ -183,7 +222,18 @@ export default async function FichaDeOrganizacionPage({
           </div>
 
           <div className="space-y-6">
-            <Tarjeta titulo="Comité de compra">
+            <Tarjeta
+              titulo="Comité de compra"
+              accion={
+                <EditarPersona
+                  organizationId={cuenta.id}
+                  rolesDeComite={catalogos.rolesComite}
+                  accion={crearPersonaAccion}
+                  etiquetaBoton="Agregar"
+                  variante="fantasma"
+                />
+              }
+            >
               {cuenta.people.length === 0 ? (
                 <p className="text-sm text-texto-tenue">
                   Sin personas registradas. El comité es lo que ancla el decisor
@@ -195,7 +245,7 @@ export default async function FichaDeOrganizacionPage({
                   {cuenta.people.map((p) => (
                     <li key={p.id} className="flex items-start gap-3">
                       <Avatar iniciales={p.initials} titulo={p.name} />
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-texto-titulo">
                           {p.name}
                         </p>
@@ -208,6 +258,19 @@ export default async function FichaDeOrganizacionPage({
                           </span>
                         )}
                       </div>
+                      <EditarPersona
+                        persona={{
+                          id: p.id,
+                          name: p.name,
+                          jobTitle: p.jobTitle,
+                          email: p.email,
+                          phone: p.phone,
+                          committeeRoleId: p.committeeRole?.id ?? null,
+                        }}
+                        rolesDeComite={catalogos.rolesComite}
+                        accion={editarPersonaAccion}
+                        variante="fantasma"
+                      />
                     </li>
                   ))}
                 </ul>
@@ -297,10 +360,21 @@ function ListaOportunidades({
   );
 }
 
-function Tarjeta({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+function Tarjeta({
+  titulo,
+  children,
+  accion,
+}: {
+  titulo: string;
+  children: React.ReactNode;
+  accion?: React.ReactNode;
+}) {
   return (
     <section className="rounded-md border border-borde bg-superficie-tarjeta p-5">
-      <h2 className="mb-4 text-sm font-semibold text-texto-titulo">{titulo}</h2>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-texto-titulo">{titulo}</h2>
+        {accion}
+      </div>
       {children}
     </section>
   );

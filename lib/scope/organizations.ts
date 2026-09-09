@@ -153,3 +153,6 @@ export async function buscarPersonasDeOrganizacion(session: Session, organizatio
     committeeRole: p.committeeRole,
   }));
 }
+
+/** La ficha completa de una cuenta, como la devuelve `getOrganization`. */
+export type OrganizacionConGente = NonNullable<Awaited<ReturnType<typeof getOrganization>>>;

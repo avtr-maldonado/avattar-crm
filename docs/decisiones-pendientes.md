@@ -502,3 +502,44 @@ volver a §9.3 tiene sentido y conviene.
 También conviene reconsiderarlo cuando haya volumen: con 500 oportunidades
 abrir sin recorte es una pantalla que nadie puede leer, y ahí el valor por
 omisión vuelve a ganar. Hoy hay una.
+
+### Q-15 · Quién edita un contacto, y la asimetría entre la ficha y la gente
+
+**Lo que el spec dice:** nada. §5.3 declara quién **ve** una cuenta; no dice
+quién la edita, ni quién puede capturar a sus contactos.
+
+**Lo que se asumió — dos reglas, no una:**
+
+| Qué | Quién |
+|---|---|
+| **La ficha de la empresa** — razón social, identificador fiscal, giro, sector, ciudad, empleados, días de crédito, propietario | Su propietario, o quien tenga `VER_OPORTUNIDADES_OFICINA` |
+| **Las personas** de esa empresa — alta y edición | Cualquiera que alcance la organización |
+
+**Por qué la asimetría.** Capturar al contacto que acabas de conocer es parte
+de trabajar la oportunidad. Un vendedor con una oportunidad en cuenta ajena la
+alcanza por §5.3; si no pudiera capturar a su interlocutor, pasaría una de dos
+cosas: o no lo captura —y el dato se pierde, que es exactamente lo que este
+sistema existe para evitar— o le pide a otro que lo haga, y no se hace.
+
+La **ficha**, en cambio, sí es del dueño de la cuenta. La razón social y los
+días de crédito no son datos de una oportunidad: son de la relación comercial,
+y esa la lleva alguien.
+
+**Dos campos que deliberadamente NO son editables:**
+
+- **El país de la organización.** Cambiarlo movería de país todas sus
+  oportunidades y con ellas quién las ve: el alcance por rol se aplicaría
+  correctamente en cada consulta y el dato habría cruzado la frontera igual
+  (`AC-05`). Eso no es editar, es migrar, y necesita su propia decisión.
+- **La empresa de una persona.** Mover a alguien de compañía cambiaría en
+  silencio quién puede verlo, y casi siempre no es la misma persona en otra
+  empresa: es una persona nueva que hay que dar de alta allá.
+
+La matriz tampoco: la jerarquía matriz-filial es `F-402`, Fase 2.
+
+**Dónde vive:** `lib/domain/contact.ts`.
+**Costo de cambiarla:** una condición en `editarOrganizacion`.
+
+**Para confirmar con el Director junto con `Q-01`, `Q-13` y `Q-14`**: las cuatro
+son la misma pregunta —quién ve y quién toca qué— y conviene resolverlas en la
+misma conversación.
