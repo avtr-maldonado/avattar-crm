@@ -60,7 +60,7 @@ export function CamposDeContacto({
         >
           <Autocompletado
             id="organizacion"
-            placeholder="Aceros del Norte"
+            placeholder="Nombre de la empresa"
             buscar={buscarOrganizaciones}
             alElegir={alElegirOrganizacion}
             etiquetaCrear="Crear organización"
@@ -79,7 +79,7 @@ export function CamposDeContacto({
         >
           <Autocompletado
             id="persona"
-            placeholder="Luis Cantú"
+            placeholder="Nombre del contacto"
             buscar={buscarPersonas}
             alElegir={alElegirPersona}
             etiquetaCrear="Crear contacto"
@@ -105,7 +105,7 @@ export function CamposDeContacto({
           {personaEsNueva && (
             <>
               <Campo etiqueta="Cargo" htmlFor="personaCargo">
-                <Entrada id="personaCargo" name="personaCargo" placeholder="Director de TI" />
+                <Entrada id="personaCargo" name="personaCargo" placeholder="Puesto en la empresa" />
               </Campo>
               <Campo
                 etiqueta="Rol en el comité"

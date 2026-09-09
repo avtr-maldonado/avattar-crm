@@ -239,7 +239,7 @@ export function NuevaOportunidad({
               name="name"
               value={estado.nombre}
               onChange={(e) => despachar({ tipo: "ESCRIBIR_NOMBRE", nombre: e.target.value })}
-              placeholder="Aceros del Norte · Servicios administrados"
+              placeholder="Servicio o proyecto que se va a vender"
               problema={problemaDe(resultado, "name")}
             />
           </Campo>

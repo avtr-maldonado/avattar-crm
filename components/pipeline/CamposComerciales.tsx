@@ -82,7 +82,7 @@ export function CamposComerciales({
             id="estimatedAmount"
             name="estimatedAmount"
             inputMode="decimal"
-            placeholder="1,200,000"
+            placeholder="Monto sin símbolo"
             className="[font-variant-numeric:tabular-nums]"
             problema={problemaDe(resultado, "estimatedAmount")}
           />
