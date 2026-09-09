@@ -14,9 +14,14 @@ import { evaluateGate, type GateRequirement } from "@/lib/domain/stageGate";
 import { ETIQUETA_BANDERA, ETIQUETA_ESTATUS, iniciales } from "@/lib/etiquetas";
 import { BarraSuperior } from "@/components/ui/BarraSuperior";
 import { Avatar, Boton, EstadoVacio, Pastilla, StatTile } from "@/components/ui/primitivas";
-import { BarraDeEtapas } from "@/components/oportunidad/BarraDeEtapas";
 import { Pestanas, type Pestana } from "@/components/oportunidad/Pestanas";
 import { ListaDeRequisitos } from "@/components/oportunidad/ListaDeRequisitos";
+import { CambioDeEtapa } from "@/components/oportunidad/CambioDeEtapa";
+import { EditarOportunidad } from "@/components/oportunidad/EditarOportunidad";
+import { catalogosParaAlta } from "@/lib/scope/configuracion";
+import { destinatariosValidos } from "@/lib/domain/opportunity";
+import { can, type Session } from "@/lib/auth/permissions";
+import { cambiarEtapaAccion, editarOportunidadAccion } from "./acciones";
 
 /**
  * La política, derivada de su lector.
@@ -62,9 +67,17 @@ export default async function DetalleOportunidadPage({
   // Las dos dependen de la oportunidad, pero no entre sí. En secuencia costaban
   // dos viajes; medido contra us-east-1, cada uno son ~287 ms de pura red
   // (docs/latencia.md).
-  const [politica, actividades] = await Promise.all([
+  const puedeReasignar = can(session, "VER_OPORTUNIDADES_OFICINA");
+
+  const [politica, actividades, catalogos, propietarios] = await Promise.all([
     getCommercialPolicy(oportunidad.pipeline.countryCode),
     listActivities(session, { where: { opportunityId: oportunidad.id }, take: 30 }),
+    catalogosParaAlta(),
+    // Solo si de verdad puede reasignar: pedir la lista para deshabilitar un
+    // control sería pagar por algo que nadie va a poder usar (Q-13).
+    puedeReasignar
+      ? destinatariosValidos(oportunidad.organization.countryCode)
+      : Promise.resolve([]),
   ]);
 
   const pestanaActiva = typeof sp.p === "string" ? sp.p : "resumen";
@@ -101,7 +114,15 @@ export default async function DetalleOportunidadPage({
       />
 
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        <Encabezado o={oportunidad} banderas={banderas} politica={politica} />
+        <Encabezado
+          o={oportunidad}
+          banderas={banderas}
+          politica={politica}
+          sesion={session}
+          puedeReasignar={puedeReasignar}
+          origenes={catalogos.origenes}
+          propietarios={propietarios.map((u) => ({ id: u.id, name: u.name }))}
+        />
 
         <div className="mt-6">
           <Pestanas pestanas={pestanas} activa={pestanaActiva} hrefDe={hrefDe} />
@@ -125,18 +146,31 @@ function Encabezado({
   o,
   banderas,
   politica,
+  sesion,
+  puedeReasignar,
+  origenes,
+  propietarios,
 }: {
   o: DetalleOportunidad;
   banderas: ReturnType<typeof computeRiskFlags>;
   politica: Politica;
+  sesion: Session;
+  puedeReasignar: boolean;
+  origenes: { id: string; name: string }[];
+  propietarios: { id: string; name: string }[];
 }) {
   const etapas = o.pipeline.stages.map((e) => ({
     id: e.id,
     name: e.name,
     position: e.position,
     probabilidad: formatPercent(toClient(e.probability), 0),
-    isClosing: e.isClosing,
+    gateMode: e.gateMode,
   }));
+
+  // Q-13 · el propietario o quien tenga alcance de oficina. La pantalla lo
+  // pregunta para no ofrecer un botón que el servidor va a rechazar; la
+  // autorización de verdad vive en `lib/domain`.
+  const puedeEditar = o.status === "ABIERTA" && (o.owner.id === sesion.userId || puedeReasignar);
 
   const congelada = o.quotes[0];
   // `grossMargin` solo viene si el usuario tiene VER_MARGEN: el selector lo
@@ -159,19 +193,68 @@ function Encabezado({
         ))}
 
         <div className="ml-auto flex gap-2">
-          {/* Las acciones llegan con sus reglas: cambiar etapa y marcar ganada
-              exigen validación de dominio (INV-07), no un botón que escriba. */}
+          {/* Marcar ganada y marcar perdida llegan con E3: dependen del cuadre
+              de hitos (AC-18) y de los mínimos MEDDIC (AC-14, AC-20). Ponerlas
+              hoy sería poner botones que siempre se niegan. */}
           <Boton variante="secundario" href={`/contactos/organizaciones/${o.organization.id}`}>
             Ver cuenta
           </Boton>
+          {puedeEditar && (
+            <EditarOportunidad
+              datos={{
+                id: o.id,
+                name: o.name,
+                primaryPersonId: o.primaryPerson?.id ?? null,
+                estimatedAmount: toClient(o.estimatedAmount),
+                expectedCloseDate: o.expectedCloseDate.toISOString().slice(0, 10),
+                businessType: o.businessType,
+                forecastCategory: o.forecastCategory,
+                sourceId: o.source?.id ?? null,
+                ownerId: o.owner.id,
+                tieneCotizacionCongelada: o.quotes.length > 0,
+                meddicScore: o.meddicScore,
+              }}
+              personas={o.organization.people.map((p) => ({
+                id: p.id,
+                name: p.name,
+                jobTitle: p.jobTitle,
+              }))}
+              origenes={origenes}
+              propietarios={propietarios}
+              puedeReasignar={puedeReasignar}
+              minimoParaCompromiso={Number(politica.meddicMinToCommit)}
+              accion={editarOportunidadAccion}
+            />
+          )}
         </div>
       </div>
 
-      <div className="mt-5 max-w-3xl">
-        <BarraDeEtapas
+      {/*
+        La línea de contexto: de quién es la cuenta, con quién se habla y quién
+        la lleva. Es lo que alguien necesita antes de tocar nada.
+      */}
+      <p className="mt-3 text-sm text-texto-tenue">
+        <span className="[font-variant-numeric:tabular-nums]">{o.folio}</span> ·{" "}
+        {o.organization.name}
+        {o.primaryPerson && (
+          <>
+            {" · "}
+            {o.primaryPerson.name}
+            {o.primaryPerson.jobTitle ? ` (${o.primaryPerson.jobTitle})` : ""}
+          </>
+        )}
+        {" · "}
+        {o.owner.name} · USD
+      </p>
+
+      <div className="mt-5">
+        <CambioDeEtapa
+          opportunityId={o.id}
           etapas={etapas}
           etapaActualId={o.stage.id}
           cerrada={o.status === "ABIERTA" ? undefined : o.status}
+          puedeMover={puedeEditar}
+          accion={cambiarEtapaAccion}
         />
       </div>
 

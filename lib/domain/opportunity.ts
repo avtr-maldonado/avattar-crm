@@ -1,8 +1,10 @@
-import type { BusinessType, CountryCode, ForecastCategory } from "@prisma/client";
+import type { BusinessType, CountryCode, ForecastCategory, Prisma } from "@prisma/client";
 import { falla, ok, type ResultadoAccion } from "@/lib/acciones";
+import { auditedTransaction } from "@/lib/audit";
 import { can, type Session } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/db";
-import { iniciales } from "@/lib/etiquetas";
+import { ETIQUETA_ESTATUS, iniciales } from "@/lib/etiquetas";
+import { contextoDeCompuerta, type DetalleOportunidad } from "@/lib/scope/opportunityDetail";
 import { evaluateGate, type GateContext, type GateFailure, type GateResult } from "./stageGate";
 import { nextFolio } from "./folio";
 
@@ -365,4 +367,209 @@ export async function crearOportunidad(
   // que enterarse: quedó registrada como incumplimiento y alimenta el reporte
   // semanal de §8.3. Enterarse por el reporte, una semana después, es tarde.
   return ok({ ...creada, gateOverride: decision.gateOverride });
+}
+
+// ═══════════════════════════════════════════════════════════ Cambiar etapa
+
+/**
+ * Mueve una oportunidad de etapa · `RN-02` y `RN-03`.
+ *
+ * Recibe el detalle **ya cargado por `lib/scope`**, igual que recibe los
+ * umbrales: si `getOpportunityDetail` lo devolvió, la sesión alcanza esa
+ * oportunidad (INV-01) y el dominio no tiene que volver a preguntarlo. Así esta
+ * función decide y escribe, sin cargar.
+ *
+ * No lleva `AuditLog`: no está entre las seis acciones de INV-09, y no debería.
+ * Su bitácora propia es `StageTransition`, que además guarda el `gateOverride`
+ * que alimenta el reporte semanal de incumplimiento de §8.3.
+ */
+export async function cambiarEtapa(
+  session: Session,
+  detalle: DetalleOportunidad,
+  input: { toStageId: string; omitirCompuerta?: boolean },
+  umbrales: { meddicMinToClosing: number },
+): Promise<ResultadoAccion<{ etapa: string; gateOverride: boolean }>> {
+  if (detalle.status !== "ABIERTA") {
+    return falla(
+      "AUTORIZACION",
+      `Esta oportunidad está ${ETIQUETA_ESTATUS[detalle.status].toLowerCase()}. Reabrirla es de Administración (RN-18).`,
+    );
+  }
+
+  const destino = detalle.pipeline.stages.find((e) => e.id === input.toStageId);
+  if (!destino) {
+    return falla("VALIDACION", {
+      campo: "toStageId",
+      mensaje: "Esa etapa no pertenece al pipeline de esta oportunidad.",
+    });
+  }
+
+  const decision = decidirTransicion({
+    gateMode: destino.gateMode,
+    resultado: evaluateGate(
+      destino.gateRequires as Parameters<typeof evaluateGate>[0],
+      contextoDeCompuerta(detalle, umbrales),
+    ),
+    omitirCompuerta: input.omitirCompuerta ?? false,
+  });
+
+  if (!decision.avanza) {
+    return falla("COMPUERTA", ...decision.faltantes.map((f) => ({ mensaje: f.message })));
+  }
+
+  const origen = detalle.stage.id;
+  const ahora = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.opportunity.update({
+      where: { id: detalle.id },
+      data: {
+        stageId: destino.id,
+        // RN-03 · el reloj mide cuánto lleva DONDE ESTÁ, así que se resella en
+        // cada transición, incluida la que retrocede.
+        stageEnteredAt: ahora,
+      },
+    });
+
+    await tx.stageTransition.create({
+      data: {
+        opportunityId: detalle.id,
+        fromStageId: origen,
+        toStageId: destino.id,
+        byUserId: session.userId,
+        gateOverride: decision.gateOverride,
+      },
+    });
+  });
+
+  return ok({ etapa: destino.name, gateOverride: decision.gateOverride });
+}
+
+// ═══════════════════════════════════════════════════════ Editar oportunidad
+
+export type EdicionDeOportunidad = {
+  name?: string;
+  primaryPersonId?: string | null;
+  estimatedAmount?: string;
+  expectedCloseDate?: Date;
+  businessType?: BusinessType;
+  forecastCategory?: ForecastCategory;
+  sourceId?: string | null;
+  ownerId?: string;
+};
+
+/**
+ * Edita los datos comerciales de una oportunidad abierta.
+ *
+ * ## Quién puede · `Q-13`
+ *
+ * El propietario, o quien tenga alcance de oficina. Un vendedor edita las
+ * suyas; las de su compañero ni siquiera se las devuelve `lib/scope`, así que
+ * ese caso no suele llegar aquí. La comprobación existe igual: la autorización
+ * no puede depender de que la pantalla haya cargado bien.
+ *
+ * ## Una cerrada no se edita · `RN-18`
+ *
+ * Solo Administración reabre. Si una ganada se pudiera editar sin reabrirla,
+ * esa regla no valdría nada: bastaría cambiarle el importe después de cerrada.
+ */
+export async function editarOportunidad(
+  session: Session,
+  detalle: DetalleOportunidad,
+  cambios: EdicionDeOportunidad,
+  umbrales: { meddicMinToCommit: number },
+): Promise<ResultadoAccion> {
+  if (detalle.status !== "ABIERTA") {
+    return falla(
+      "AUTORIZACION",
+      `Esta oportunidad está ${ETIQUETA_ESTATUS[detalle.status].toLowerCase()}. Reabrirla es de Administración (RN-18).`,
+    );
+  }
+
+  const esSuya = detalle.owner.id === session.userId;
+  if (!esSuya && !can(session, "VER_OPORTUNIDADES_OFICINA")) {
+    return falla("AUTORIZACION", "Solo su propietario o Gerencia pueden editarla.");
+  }
+
+  const datos: Prisma.OpportunityUpdateInput = {};
+
+  if (cambios.name !== undefined) {
+    if (cambios.name.trim().length < 3) {
+      return falla("VALIDACION", { campo: "name", mensaje: "Ponle nombre a la oportunidad." });
+    }
+    datos.name = cambios.name.trim();
+  }
+
+  if (cambios.expectedCloseDate !== undefined) datos.expectedCloseDate = cambios.expectedCloseDate;
+  if (cambios.businessType !== undefined) datos.businessType = cambios.businessType;
+
+  if (cambios.estimatedAmount !== undefined) {
+    // INV-06 · una cotización congelada es inmutable, y `amount` es su espejo.
+    // Con cotización, el estimado deja de mandar sobre el importe vigente.
+    datos.estimatedAmount = cambios.estimatedAmount;
+    if (!detalle.quotes[0]) datos.amount = cambios.estimatedAmount;
+  }
+
+  if (cambios.forecastCategory !== undefined) {
+    // RN-29 · «Compromiso» promete al pronóstico. Sin puntaje MEDDIC nadie
+    // calificó esa promesa.
+    if (
+      cambios.forecastCategory === "COMPROMISO" &&
+      (detalle.meddicScore ?? 0) < umbrales.meddicMinToCommit
+    ) {
+      return falla("VALIDACION", {
+        campo: "forecastCategory",
+        mensaje: `«Compromiso» exige un puntaje MEDDIC de al menos ${umbrales.meddicMinToCommit}; esta tiene ${detalle.meddicScore ?? 0}.`,
+      });
+    }
+    datos.forecastCategory = cambios.forecastCategory;
+  }
+
+  if (cambios.primaryPersonId !== undefined) {
+    datos.primaryPerson = cambios.primaryPersonId
+      ? { connect: { id: cambios.primaryPersonId } }
+      : { disconnect: true };
+  }
+
+  if (cambios.sourceId !== undefined) {
+    datos.source = cambios.sourceId ? { connect: { id: cambios.sourceId } } : { disconnect: true };
+  }
+
+  // ── Reasignar · Q-13 y Q-14 ──────────────────────────────────────────────
+  const reasigna = cambios.ownerId !== undefined && cambios.ownerId !== detalle.owner.id;
+  if (reasigna) {
+    if (!can(session, "VER_OPORTUNIDADES_OFICINA")) {
+      return falla("AUTORIZACION", "Cambiar de propietario es de Gerencia.");
+    }
+    const validos = await destinatariosValidos(detalle.organization.countryCode);
+    if (!validos.some((u) => u.id === cambios.ownerId)) {
+      return falla("VALIDACION", {
+        campo: "ownerId",
+        mensaje: `Ese usuario no está activo o no opera en ${detalle.organization.countryCode}.`,
+      });
+    }
+    datos.owner = { connect: { id: cambios.ownerId } };
+  }
+
+  if (Object.keys(datos).length === 0) return ok(null);
+
+  // El cambio de propietario SÍ está en INV-09, así que va con su bitácora en
+  // la misma transacción. El resto de la edición no lo está.
+  if (reasigna) {
+    await auditedTransaction(async (tx, audit) => {
+      await tx.opportunity.update({ where: { id: detalle.id }, data: datos });
+      await audit({
+        entity: "Opportunity",
+        entityId: detalle.id,
+        action: "CAMBIAR_PROPIETARIO",
+        byUserId: session.userId,
+        before: { ownerId: detalle.owner.id },
+        after: { ownerId: cambios.ownerId! },
+      });
+    });
+  } else {
+    await prisma.opportunity.update({ where: { id: detalle.id }, data: datos });
+  }
+
+  return ok(null);
 }
