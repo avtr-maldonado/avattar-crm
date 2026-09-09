@@ -449,3 +449,56 @@ No es un detalle de implementación. Si se crearan por separado y la oportunidad
 fallara después, cada captura abandonada a la mitad dejaría una empresa huérfana
 en el catálogo. Esa es la basura que nadie limpia. Hay una prueba que lo
 verifica: con un pipeline de otro país, la organización **no** queda.
+
+---
+
+## 12. Los filtros por omisión de P-01 se quitaron (9 de septiembre de 2026)
+
+**Diverge de §9.3**, que decía:
+
+> «Por omisión, la pantalla de oportunidades abre en `dateField=CIERRE_ESTIMADO`
+> y `period=ESTE_TRIMESTRE`, que es la pregunta que un vendedor y un gerente se
+> hacen todos los días.»
+
+Y de §9.2, que pedía `status` en «Abierta por omisión».
+
+### Qué pasó
+
+Se dio de alta una oportunidad el 9 de septiembre con cierre estimado el 30 de
+octubre. **Desapareció de la pantalla**: no salía en el kanban ni en la tabla.
+El encabezado decía «0 abiertas · $0.00», que era falso.
+
+La causa no era un defecto de código: el filtro estaba haciendo exactamente lo
+que §9.3 pide. El defecto era que **nadie podía verlo**. La barra de filtros de
+§9 no existe todavía —el §17 la pone en E0 y está atrasada—, así que el recorte
+se aplicaba en silencio y la pantalla afirmaba que no había nada.
+
+`AC-23` ya lo prohibía en espíritu: «lo hace visible en la barra de filtros; **no
+queda implícito**».
+
+### Qué se hizo
+
+`parseFilters` ya no pone preajuste ni estatus por omisión: `period` arranca en
+`PERSONALIZADO`, que sin `from` ni `to` no arma cláusula de fecha, y `status`
+arranca vacío. La pantalla abre mostrando **todo lo que el alcance del rol
+permite ver**.
+
+Nada más cambió. Elegir un preajuste sigue filtrando igual, el estado sigue
+viviendo en la URL (`INV-10`) y el alcance por rol se sigue anteponiendo a
+cualquier filtro (`AC-25`).
+
+### Qué cuesta revertirlo
+
+Dos literales en `lib/filters/opportunities.ts`: `PERSONALIZADO` → `ESTE_TRIMESTRE`
+y `status` → `["ABIERTA"]`. Están comentados en el archivo.
+
+### Cuándo reconsiderarlo
+
+**Cuando exista la barra de filtros.** El valor por omisión de §9.3 es buena
+pregunta de negocio; el problema era que fuera invisible. Con una barra que
+muestre «Cierre estimado · Este trimestre» en una pastilla que se pueda quitar,
+volver a §9.3 tiene sentido y conviene.
+
+También conviene reconsiderarlo cuando haya volumen: con 500 oportunidades
+abrir sin recorte es una pantalla que nadie puede leer, y ahí el valor por
+omisión vuelve a ganar. Hoy hay una.

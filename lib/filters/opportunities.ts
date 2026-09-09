@@ -172,7 +172,24 @@ export function parseFilters(searchParams: URLSearchParams, session: Session): P
   const dateField =
     unEnum(searchParams.get("dateField"), CAMPOS_FECHA) ?? "CIERRE_ESTIMADO";
 
-  const period = unEnum(searchParams.get("period"), PREAJUSTES) ?? "ESTE_TRIMESTRE";
+  /**
+   * Sin preajuste por omisión · diverge de §9.3.
+   *
+   * §9.3 abría en `ESTE_TRIMESTRE`, «la pregunta que un vendedor y un gerente
+   * se hacen todos los días». Es buena pregunta, pero como **valor por omisión
+   * invisible** esconde datos: una oportunidad creada el 9 de septiembre con
+   * cierre en octubre desaparecía de la pantalla, el encabezado decía «0
+   * abiertas», y no había forma de enterarse porque la barra de filtros de §9
+   * todavía no existe.
+   *
+   * `PERSONALIZADO` sin `from` ni `to` resuelve a `null` y no arma cláusula de
+   * fecha. En cuanto alguien elija un preajuste, filtra igual que siempre.
+   *
+   * Para volver a §9.3: cambiar este `PERSONALIZADO` por `ESTE_TRIMESTRE` y el
+   * `[]` de abajo por `["ABIERTA"]`. Cuando exista la barra de filtros, el
+   * valor por omisión deja de ser invisible y vale la pena reconsiderarlo.
+   */
+  const period = unEnum(searchParams.get("period"), PREAJUSTES) ?? "PERSONALIZADO";
 
   const status = variosEnum(searchParams.getAll("status"), ESTADOS);
 
@@ -182,8 +199,9 @@ export function parseFilters(searchParams: URLSearchParams, session: Session): P
     owner: searchParams.getAll("owner"),
     pipeline: searchParams.get("pipeline"),
     stage: searchParams.getAll("stage"),
-    // Abierta por omisión (§9.2): la pregunta diaria es sobre lo vivo.
-    status: status.length > 0 ? status : ["ABIERTA"],
+    // Sin estatus por omisión, por la misma razón que el periodo: era un
+    // recorte que nadie podía ver. (§9.2 pedía «Abierta por omisión».)
+    status,
     forecast: variosEnum(searchParams.getAll("forecast"), CATEGORIAS),
     country: variosEnum(searchParams.getAll("country"), PAISES),
     amountMin: unDecimal(searchParams.get("amountMin")),

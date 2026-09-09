@@ -27,12 +27,39 @@ const opciones = { fiscalYearStartMonth: 1, ahora: AHORA };
 const params = (qs: string) => new URLSearchParams(qs);
 
 describe("parseFilters · valores por omisión", () => {
-  it("abre en cierre estimado y este trimestre (§9.3)", () => {
-    // «La pregunta que un vendedor y un gerente se hacen todos los días.»
+  it("abre SIN restringir: se ven todas las oportunidades del alcance", () => {
+    /**
+     * Diverge de §9.3, que abría en `ESTE_TRIMESTRE` y `ABIERTA`.
+     *
+     * Decisión del negocio del 9-sep-2026, después de que una oportunidad
+     * recién creada con cierre en octubre desapareciera de la pantalla estando
+     * el usuario en septiembre: el tablero decía «0 abiertas» y no había forma
+     * de ver que estaba filtrando, porque la barra de filtros de §9 todavía no
+     * existe. Un valor por omisión invisible que esconde datos es peor que no
+     * tener valor por omisión.
+     *
+     * `dateField` sigue siendo `CIERRE_ESTIMADO`: AC-23 exige que el campo no
+     * quede implícito **cuando hay rango**, y en cuanto alguien elija un
+     * preajuste este es el que aplica.
+     */
     const p = parseFilters(params(""), vendedor);
     expect(p.dateField).toBe("CIERRE_ESTIMADO");
-    expect(p.period).toBe("ESTE_TRIMESTRE");
-    expect(p.status).toEqual(["ABIERTA"]);
+    expect(p.period).toBe("PERSONALIZADO");
+    expect(p.status).toEqual([]);
+  });
+
+  it("sin preajuste ni rango, no se arma cláusula de fecha", () => {
+    const where = toWhere(parseFilters(params(""), vendedor), vendedor, opciones);
+    expect(JSON.stringify(where)).not.toContain("expectedCloseDate");
+  });
+
+  it("elegir un preajuste sí filtra: lo que se quitó es el valor por omisión", () => {
+    const where = toWhere(
+      parseFilters(params("period=ESTE_TRIMESTRE"), vendedor),
+      vendedor,
+      opciones,
+    );
+    expect(JSON.stringify(where)).toContain("expectedCloseDate");
   });
 
   it("AC-23 · un rango sin dateField usa CIERRE_ESTIMADO y lo hace visible", () => {
@@ -53,7 +80,7 @@ describe("parseFilters · valores por omisión", () => {
     // La URL es entrada del usuario: puede venir editada a mano.
     const p = parseFilters(params("dateField=INVENTADO&status=OTRO"), vendedor);
     expect(p.dateField).toBe("CIERRE_ESTIMADO");
-    expect(p.status).toEqual(["ABIERTA"]);
+    expect(p.status).toEqual([]);
   });
 });
 
@@ -109,11 +136,22 @@ describe("toWhere · traducción de cada filtro", () => {
   });
 
   it("el mismo rango sobre otro campo produce otra consulta", () => {
+    // §9.3 · «un rango de fechas sin decir sobre qué campo aplica produce
+    // números que nadie puede reproducir». El preajuste va explícito porque ya
+    // no hay uno por omisión: sin rango no hay nada que atribuir a un campo.
     const estimado = JSON.stringify(
-      toWhere(parseFilters(params("dateField=CIERRE_ESTIMADO"), gerente), gerente, opciones),
+      toWhere(
+        parseFilters(params("dateField=CIERRE_ESTIMADO&period=ESTE_TRIMESTRE"), gerente),
+        gerente,
+        opciones,
+      ),
     );
     const creacion = JSON.stringify(
-      toWhere(parseFilters(params("dateField=CREACION"), gerente), gerente, opciones),
+      toWhere(
+        parseFilters(params("dateField=CREACION&period=ESTE_TRIMESTRE"), gerente),
+        gerente,
+        opciones,
+      ),
     );
     expect(estimado).not.toBe(creacion);
   });
@@ -139,9 +177,10 @@ describe("toWhere · traducción de cada filtro", () => {
   });
 
   it("sin filtros del usuario, solo queda el alcance", () => {
-    // `status=ABIERTA` por omisión más el rango del trimestre: dos cláusulas.
+    // Ya sin valores por omisión: la única cláusula es la del rol. Eso es lo
+    // que hace que la pantalla muestre todo lo que el usuario puede ver.
     const where = toWhere(parseFilters(params(""), direccion), direccion, opciones);
-    expect((where.AND as object[]).length).toBeGreaterThanOrEqual(2);
+    expect((where.AND as object[]).length).toBe(1);
   });
 });
 
