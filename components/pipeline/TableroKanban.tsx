@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import clsx from "clsx";
 import type { ResultadoAccion } from "@/lib/acciones";
 import { avisar, avisarSiCorresponde } from "@/components/ui/avisos";
@@ -127,7 +127,12 @@ export function TableroKanban({
     // Se guarda para poder nombrar el destino en el panel de requisitos y para
     // que «Mover de todos modos» sepa a dónde iba.
     setDetenida({ destino, tarjeta });
-    enviar(datos);
+
+    // Despachar fuera de una transición deja `enviando` sin actualizarse: la
+    // tarjeta no se atenuaría y se podría arrastrar otra vez mientras el
+    // servidor todavía decide. El `action` de un formulario envuelve esto solo;
+    // al despachar a mano hay que hacerlo aquí.
+    startTransition(() => enviar(datos));
   }
 
   return (
@@ -242,7 +247,7 @@ export function TableroKanban({
                       detenida.destino.etapaId,
                       { omitirCompuerta: true },
                     );
-                    if (datos) enviar(datos);
+                    if (datos) startTransition(() => enviar(datos));
                   }}
                 >
                   Mover de todos modos
