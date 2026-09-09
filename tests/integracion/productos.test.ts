@@ -7,7 +7,7 @@ import { money } from "@/lib/money";
 import { PRODUCTOS } from "@/prisma/seed/datos";
 
 /** Los ocho SKU que §15 declara. Lo demás es trabajo real encima del escenario. */
-const SKU_SEMBRADOS = new Set(PRODUCTOS.map((p) => p.sku));
+const SKU_SEMBRADOS: ReadonlySet<string> = new Set<string>(PRODUCTOS.map((p) => p.sku));
 
 /**
  * P-06 contra los datos reales.
