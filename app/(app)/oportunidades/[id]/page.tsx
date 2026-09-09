@@ -7,7 +7,19 @@ import {
   type DetalleOportunidad,
 } from "@/lib/scope/opportunityDetail";
 import { getCommercialPolicy } from "@/lib/policy";
-import { formatPercent, formatUSD, toClient } from "@/lib/money";
+import { getCotizacion, listCotizaciones } from "@/lib/scope/cotizaciones";
+import { listProductos } from "@/lib/scope/productos";
+import { calcularLinea, lineasBajoElPiso } from "@/lib/domain/quote";
+import { TablaDeCotizacion, type LineaCalculada } from "@/components/cotizacion/TablaDeCotizacion";
+import { AbrirCotizacion } from "@/components/cotizacion/AbrirCotizacion";
+import {
+  abrirCotizacionAccion,
+  congelarAccion,
+  guardarLineaAccion,
+  nuevaVersionAccion,
+  quitarLineaAccion,
+} from "./cotizacion.acciones";
+import { formatPercent, formatUSD, money, toClient } from "@/lib/money";
 import { weightedAmount } from "@/lib/domain/pipeline";
 import { computeRiskFlags } from "@/lib/domain/riskFlags";
 import { evaluateGate, type GateRequirement } from "@/lib/domain/stageGate";
@@ -76,7 +88,7 @@ export default async function DetalleOportunidadPage({
   // (docs/latencia.md).
   const puedeReasignar = can(session, "VER_OPORTUNIDADES_OFICINA");
 
-  const [politica, actividades, catalogos, tiposActividad, propietarios] = await Promise.all([
+  const [politica, actividades, catalogos, tiposActividad, propietarios, cotizaciones] = await Promise.all([
     getCommercialPolicy(oportunidad.pipeline.countryCode),
     listActivities(session, { where: { opportunityId: oportunidad.id }, take: 30 }),
     catalogosParaAlta(),
@@ -86,6 +98,7 @@ export default async function DetalleOportunidadPage({
     puedeReasignar
       ? destinatariosValidos(oportunidad.organization.countryCode)
       : Promise.resolve([]),
+    listCotizaciones(session, oportunidad.id),
   ]);
 
   const pestanaActiva = typeof sp.p === "string" ? sp.p : "resumen";
@@ -94,7 +107,7 @@ export default async function DetalleOportunidadPage({
   const pestanas: Pestana[] = [
     { clave: "resumen", etiqueta: "Resumen" },
     { clave: "actividades", etiqueta: "Actividades", contador: actividades.length },
-    { clave: "cotizacion", etiqueta: "Cotización", llegaEn: "E2, cotización y margen" },
+    { clave: "cotizacion", etiqueta: "Cotización", contador: cotizaciones.length },
     { clave: "meddic", etiqueta: "MEDDIC", llegaEn: "E3, MEDDIC y cierre" },
     { clave: "hitos", etiqueta: "Hitos", llegaEn: "E3, MEDDIC y cierre" },
     {
@@ -137,7 +150,14 @@ export default async function DetalleOportunidadPage({
         </div>
 
         <div className="mt-6">
-          {pestanaActiva === "actividades" ? (
+          {pestanaActiva === "cotizacion" ? (
+            <TabCotizacion
+              session={session}
+              oportunidad={oportunidad}
+              cotizaciones={cotizaciones}
+              politica={politica}
+            />
+          ) : pestanaActiva === "actividades" ? (
             <TabActividades
               actividades={actividades}
               acciones={
@@ -486,6 +506,149 @@ function TabResumen({
 }
 
 // ───────────────────────────────────────────────────────── Tab Actividades
+
+// ───────────────────────────────────────────────────────────── Cotización
+
+/**
+ * La pestaña de cotización · E2.
+ *
+ * Carga la versión vigente —el borrador si lo hay, si no la última congelada—
+ * y **formatea aquí** cada cifra. El componente cliente recibe cadenas ya
+ * hechas: la aritmética de dinero es `Decimal` del lado del servidor (INV-03),
+ * y lo que cruza la frontera no es un número, es un texto.
+ */
+async function TabCotizacion({
+  session,
+  oportunidad,
+  cotizaciones,
+  politica,
+}: {
+  session: Session;
+  oportunidad: DetalleOportunidad;
+  cotizaciones: Awaited<ReturnType<typeof listCotizaciones>>;
+  politica: Politica;
+}) {
+  const verCosto = can(session, "VER_COSTO");
+  const verMargen = can(session, "VER_MARGEN");
+  const puedeEditar =
+    oportunidad.status === "ABIERTA" &&
+    (oportunidad.owner.id === session.userId || can(session, "VER_OPORTUNIDADES_OFICINA"));
+
+  // La vigente: el borrador si existe, si no la última —congelada o no—.
+  const vigente = cotizaciones.find((c) => c.status === "BORRADOR") ?? cotizaciones[0];
+
+  if (!vigente) {
+    return (
+      <EstadoVacio
+        titulo="Sin cotización"
+        explicacion="La cotización es lo que convierte una oportunidad en una promesa con cifras: fija el neto, el margen y lo que se puede descontar."
+        accion={
+          puedeEditar ? (
+            <AbrirCotizacion opportunityId={oportunidad.id} accion={abrirCotizacionAccion} />
+          ) : (
+            <Boton variante="secundario" href={`/oportunidades/${oportunidad.id}`}>
+              Volver al resumen
+            </Boton>
+          )
+        }
+      />
+    );
+  }
+
+  const cotizacion = await getCotizacion(session, vigente.id);
+  if (!cotizacion) notFound();
+
+  const productos = puedeEditar ? await listProductos(session) : [];
+
+  // Las líneas, calculadas con Decimal y formateadas antes de cruzar.
+  const paraElPiso = cotizacion.lines.map((l) => ({
+    descripcion: l.description,
+    quantity: l.quantity,
+    unitPrice: l.unitPrice,
+    discountRate: l.discountRate,
+    // Sin VER_COSTO el costo no viene (INV-02), y sin costo no hay margen que
+    // comparar contra el piso: la franja simplemente no señala nada.
+    unitCost: "unitCost" in l ? l.unitCost : money(0),
+  }));
+  const bajas = new Set(
+    verCosto ? lineasBajoElPiso(paraElPiso, politica.lineMarginFloor).map((b) => b.descripcion) : [],
+  );
+
+  const lineas: LineaCalculada[] = cotizacion.lines.map((l, i) => {
+    const calculo = calcularLinea(paraElPiso[i]!);
+    return {
+      id: l.id,
+      descripcion: l.description,
+      unidad: l.unit,
+      cantidad: toClient(l.quantity),
+      precioLista: formatUSD(l.unitPrice),
+      descuentoPct: l.discountRate.times(100).toFixed(2).replace(/\.?0+$/, ""),
+      precioNeto: formatUSD(calculo.neto),
+      importe: formatUSD(calculo.importe),
+      ...(verCosto && "unitCost" in l
+        ? { costoUnitario: formatUSD(l.unitCost), utilidad: formatUSD(calculo.utilidad) }
+        : {}),
+      ...(verMargen ? { margen: formatPercent(toClient(calculo.margen)) } : {}),
+      bajoElPiso: bajas.has(l.description),
+    };
+  });
+
+  return (
+    <div className="space-y-4">
+      {cotizaciones.length > 1 && (
+        <p className="text-xs text-texto-tenue">
+          {cotizaciones.length} versiones ·{" "}
+          {cotizaciones
+            .map((c) => `v${c.version} ${ETIQUETA_ESTADO_COTIZACION[c.status]}`)
+            .join(" · ")}
+        </p>
+      )}
+
+      <TablaDeCotizacion
+        quoteId={cotizacion.id}
+        version={cotizacion.version}
+        status={cotizacion.status}
+        congeladaEl={cotizacion.frozenAt ? FECHA.format(cotizacion.frozenAt) : null}
+        lineas={lineas}
+        totales={{
+          grossSubtotal: formatUSD(cotizacion.grossSubtotal),
+          descuento: formatUSD(cotizacion.grossSubtotal.minus(cotizacion.netSubtotal)),
+          descuentoPct: formatPercent(toClient(cotizacion.discountRate)),
+          netSubtotal: formatUSD(cotizacion.netSubtotal),
+          taxPct: formatPercent(toClient(cotizacion.taxRate), 0),
+          taxAmount: formatUSD(cotizacion.taxAmount),
+          total: formatUSD(cotizacion.total),
+          ...(verCosto && "totalCost" in cotizacion
+            ? {
+                totalCost: formatUSD(cotizacion.totalCost),
+                grossProfit: formatUSD(cotizacion.grossProfit),
+              }
+            : {}),
+          ...(verMargen && "grossMargin" in cotizacion
+            ? { grossMargin: formatPercent(toClient(cotizacion.grossMargin)) }
+            : {}),
+        }}
+        productos={productos.map((p) => ({ id: p.id, sku: p.sku, name: p.name }))}
+        verCosto={verCosto}
+        verMargen={verMargen}
+        puedeEditar={puedeEditar}
+        pisoDeLinea={formatPercent(toClient(politica.lineMarginFloor), 0)}
+        acciones={{
+          guardarLinea: guardarLineaAccion,
+          quitarLinea: quitarLineaAccion,
+          congelar: congelarAccion,
+          nuevaVersion: nuevaVersionAccion,
+        }}
+      />
+    </div>
+  );
+}
+
+const ETIQUETA_ESTADO_COTIZACION: Record<string, string> = {
+  BORRADOR: "borrador",
+  CONGELADA: "congelada",
+  REEMPLAZADA: "reemplazada",
+};
 
 function TabActividades({
   actividades,

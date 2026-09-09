@@ -4,6 +4,10 @@ import { prisma } from "@/lib/db";
 import { getCommercialPolicy } from "@/lib/policy";
 import { listProductos, listVigenciasDePrecio } from "@/lib/scope/productos";
 import { money } from "@/lib/money";
+import { PRODUCTOS } from "@/prisma/seed/datos";
+
+/** Los ocho SKU que §15 declara. Lo demás es trabajo real encima del escenario. */
+const SKU_SEMBRADOS = new Set(PRODUCTOS.map((p) => p.sku));
 
 /**
  * P-06 contra los datos reales.
@@ -144,15 +148,26 @@ describe("P-06 · el hallazgo del piso por línea · §9.1", () => {
     expect(precio.minPrice.toString()).toBe(precio.listPrice.toString());
   });
 
-  it("es el único SKU en esa situación", async () => {
-    // Si aparecen más, la decisión de §9.1 deja de ser un caso y pasa a ser
-    // una política que hay que cerrar.
+  it("es el único SKU DEL ESCENARIO en esa situación", async () => {
+    /**
+     * Acotado a los ocho SKU de §15, no a todo el catálogo.
+     *
+     * La igualdad valía mientras nadie pudiera dar de alta productos. Dejó de
+     * valer el día que P-06 tiene formulario: un SKU nuevo con margen delgado
+     * es una decisión comercial, no una regresión del escenario aprobado.
+     *
+     * El canario sigue vivo para lo que importa: si una de las ocho de §15
+     * cambia de lado, esto falla. Y si aparecen varios productos reales bajo el
+     * piso, la conversación de §9.1 —¿es un caso o es una política?— hay que
+     * tenerla igual, solo que mirando el catálogo, no esta prueba.
+     */
     const [jorge, politica] = await Promise.all([
       sesionDe("jm@avattar.com"),
       getCommercialPolicy("MX"),
     ]);
 
     const bajoElPiso = (await listProductos(jorge))
+      .filter((p) => SKU_SEMBRADOS.has(p.sku))
       .filter((p) => {
         const precio = p.prices[0];
         if (!precio || !("standardCost" in precio)) return false;
