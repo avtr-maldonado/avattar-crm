@@ -193,3 +193,12 @@ export async function catalogosParaAlta() {
 
   return { origenes, rolesComite };
 }
+
+/** Los tipos de actividad activos, para el formulario de registro (§12.4). */
+export async function tiposDeActividad() {
+  return prisma.activityType.findMany({
+    where: { active: true },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}

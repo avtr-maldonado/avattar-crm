@@ -17,11 +17,16 @@ import { Avatar, Boton, EstadoVacio, Pastilla, StatTile } from "@/components/ui/
 import { Pestanas, type Pestana } from "@/components/oportunidad/Pestanas";
 import { ListaDeRequisitos } from "@/components/oportunidad/ListaDeRequisitos";
 import { CambioDeEtapa } from "@/components/oportunidad/CambioDeEtapa";
+import { RegistrarActividad } from "@/components/oportunidad/RegistrarActividad";
 import { EditarOportunidad } from "@/components/oportunidad/EditarOportunidad";
-import { catalogosParaAlta } from "@/lib/scope/configuracion";
+import { catalogosParaAlta, tiposDeActividad } from "@/lib/scope/configuracion";
 import { destinatariosValidos } from "@/lib/domain/opportunity";
 import { can, type Session } from "@/lib/auth/permissions";
-import { cambiarEtapaAccion, editarOportunidadAccion } from "./acciones";
+import {
+  cambiarEtapaAccion,
+  editarOportunidadAccion,
+  registrarActividadAccion,
+} from "./acciones";
 
 /**
  * La política, derivada de su lector.
@@ -69,10 +74,11 @@ export default async function DetalleOportunidadPage({
   // (docs/latencia.md).
   const puedeReasignar = can(session, "VER_OPORTUNIDADES_OFICINA");
 
-  const [politica, actividades, catalogos, propietarios] = await Promise.all([
+  const [politica, actividades, catalogos, tiposActividad, propietarios] = await Promise.all([
     getCommercialPolicy(oportunidad.pipeline.countryCode),
     listActivities(session, { where: { opportunityId: oportunidad.id }, take: 30 }),
     catalogosParaAlta(),
+    tiposDeActividad(),
     // Solo si de verdad puede reasignar: pedir la lista para deshabilitar un
     // control sería pagar por algo que nadie va a poder usar (Q-13).
     puedeReasignar
@@ -130,7 +136,18 @@ export default async function DetalleOportunidadPage({
 
         <div className="mt-6">
           {pestanaActiva === "actividades" ? (
-            <TabActividades actividades={actividades} />
+            <TabActividades
+              actividades={actividades}
+              acciones={
+                oportunidad.status === "ABIERTA" ? (
+                  <RegistrarActividad
+                    opportunityId={oportunidad.id}
+                    tipos={tiposActividad}
+                    accion={registrarActividadAccion}
+                  />
+                ) : null
+              }
+            />
           ) : (
             <TabResumen o={oportunidad} politica={politica} congeladaExiste={congelada != null} />
           )}
@@ -435,8 +452,11 @@ function TabResumen({
 
 function TabActividades({
   actividades,
+  acciones,
 }: {
   actividades: Awaited<ReturnType<typeof listActivities>>;
+  /** El botón de registrar, cuando la oportunidad admite escritura. */
+  acciones: React.ReactNode;
 }) {
   if (actividades.length === 0) {
     return (
@@ -444,16 +464,20 @@ function TabActividades({
         titulo="Sin actividades registradas"
         explicacion="Toda oportunidad abierta debería tener una próxima actividad agendada. Sin ella, el negocio depende de que alguien se acuerde."
         accion={
-          <Boton variante="secundario" href="/actividades">
-            Ir a la agenda
-          </Boton>
+          acciones ?? (
+            <Boton variante="secundario" href="/actividades">
+              Ir a la agenda
+            </Boton>
+          )
         }
       />
     );
   }
 
   return (
-    <ol className="space-y-3">
+    <>
+      {acciones && <div className="mb-4 flex justify-end">{acciones}</div>}
+      <ol className="space-y-3">
       {actividades.map((a) => (
         <li
           key={a.id}
@@ -472,8 +496,9 @@ function TabActividades({
             {a.completedAt ? " · realizada" : " · pendiente"}
           </p>
         </li>
-      ))}
-    </ol>
+        ))}
+      </ol>
+    </>
   );
 }
 

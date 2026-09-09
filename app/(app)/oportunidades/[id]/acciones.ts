@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { deZod, falla, ok, type ResultadoAccion } from "@/lib/acciones";
 import { requireSession } from "@/lib/auth/session";
+import { registrarActividad } from "@/lib/domain/activity";
 import { cambiarEtapa, editarOportunidad } from "@/lib/domain/opportunity";
 import { getCommercialPolicy } from "@/lib/policy";
 import { getOpportunityDetail } from "@/lib/scope/opportunityDetail";
@@ -128,4 +129,54 @@ export async function editarOportunidadAccion(
   revalidatePath(`/oportunidades/${d.opportunityId}`);
   revalidatePath("/oportunidades");
   return ok(null);
+}
+
+const esquemaActividad = z.object({
+  opportunityId: z.string().min(1),
+  typeId: z.string().min(1, "Elige el tipo de actividad."),
+  subject: z.string().trim().min(3, "Escribe de qué se trató la actividad."),
+  outcome: z.string().trim().optional(),
+  ocurrioEn: z.string().optional(),
+  siguienteTypeId: z.string().optional(),
+  siguienteSubject: z.string().trim().optional(),
+  siguienteStartsAt: z.string().optional(),
+  sinSeguimiento: z.coerce.boolean().optional(),
+});
+
+export async function registrarActividadAccion(
+  _previo: ResultadoAccion<{ siguienteEn: Date | null }> | null,
+  form: FormData,
+): Promise<ResultadoAccion<{ siguienteEn: Date | null }>> {
+  const datos = esquemaActividad.safeParse(Object.fromEntries(form));
+  if (!datos.success) return deZod(datos.error);
+  const d = datos.data;
+
+  const { session, detalle } = await cargar(d.opportunityId);
+  if (!detalle) return falla("AUTORIZACION", NO_ALCANZA);
+
+  // El siguiente paso es todo o nada: con asunto y fecha, o no hay siguiente.
+  // Medio paso agendado es una actividad que nadie sabe cuándo ocurre.
+  const siguiente =
+    d.siguienteTypeId && d.siguienteSubject && d.siguienteStartsAt
+      ? {
+          typeId: d.siguienteTypeId,
+          subject: d.siguienteSubject,
+          startsAt: new Date(`${d.siguienteStartsAt}T12:00:00`),
+        }
+      : undefined;
+
+  const r = await registrarActividad(session, detalle, {
+    typeId: d.typeId,
+    subject: d.subject,
+    outcome: d.outcome,
+    ocurrioEn: d.ocurrioEn ? new Date(`${d.ocurrioEn}T12:00:00`) : undefined,
+    siguiente,
+    sinSeguimiento: d.sinSeguimiento,
+  });
+  if (!r.ok) return r;
+
+  revalidatePath(`/oportunidades/${d.opportunityId}`);
+  revalidatePath("/actividades");
+  revalidatePath("/oportunidades");
+  return ok(r.datos);
 }

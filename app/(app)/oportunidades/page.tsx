@@ -17,6 +17,7 @@ import type { DatosTarjeta } from "@/components/pipeline/TarjetaOportunidad";
 import { TablaOportunidades } from "@/components/pipeline/TablaOportunidades";
 import { NuevaOportunidad } from "@/components/pipeline/NuevaOportunidad";
 import { buscarOrganizacionesAccion, buscarPersonasAccion, crearOportunidadAccion } from "./acciones";
+import { cambiarEtapaAccion } from "./[id]/acciones";
 
 /**
  * P-01 · Pipeline de oportunidades.
@@ -185,6 +186,7 @@ export default async function PipelinePage({
         sum(deLaEtapa.map((o) => weightedAmount(o.amount, etapa.probability))),
       ),
       esCierre: etapa.isClosing,
+      gateMode: etapa.gateMode,
       oportunidades: deLaEtapa.map((o) => porId.get(o.id)!),
     };
   });
@@ -253,6 +255,10 @@ export default async function PipelinePage({
           {vista === "kanban" ? (
             <TableroKanban
               columnas={columnas}
+              // Mover desde el tablero es la misma acción que desde el
+              // detalle: una sola evaluación de RN-02, un solo camino.
+              puedeMover
+              accion={cambiarEtapaAccion}
               accionVacio={
                 <>
                   <Boton href="/oportunidades" variante="secundario">
