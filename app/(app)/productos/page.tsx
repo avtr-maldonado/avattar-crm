@@ -1,6 +1,10 @@
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/permissions";
 import { listProductos, listVigenciasDePrecio } from "@/lib/scope/productos";
+import { familiasDeProducto } from "@/lib/scope/configuracion";
+import { getCommercialPolicy } from "@/lib/policy";
+import { EditarProducto } from "@/components/productos/EditarProducto";
+import { crearProductoAccion, editarProductoAccion } from "./acciones";
 import { formatPercent, formatUSD, money, toClient } from "@/lib/money";
 import { iniciales } from "@/lib/etiquetas";
 import { BarraSuperior } from "@/components/ui/BarraSuperior";
@@ -46,11 +50,18 @@ export default async function ProductosPage({
   const [session, sp] = await Promise.all([requireSession(), searchParams]);
   const activa = sp.p === "listas" ? "listas" : "catalogo";
   const verCosto = can(session, "VER_COSTO");
+  // Productos son catálogo: los edita quien edita catálogos, igual que en P-11.
+  const puedeEditar = can(session, "EDITAR_CATALOGOS");
 
-  const [productos, vigencias] = await Promise.all([
+  const [productos, vigencias, familias, politica] = await Promise.all([
     listProductos(session),
     listVigenciasDePrecio(session),
+    puedeEditar ? familiasDeProducto() : Promise.resolve([]),
+    // La lista es única en USD; el piso de margen por línea se toma de México,
+    // como hace el seed. Ver `app/(app)/productos/acciones.ts`.
+    getCommercialPolicy("MX"),
   ]);
+  const pisoDeMargen = Number(politica.lineMarginFloor);
   const ahora = new Date();
 
   const obsoletos = verCosto
@@ -117,19 +128,36 @@ export default async function ProductosPage({
           </div>
         )}
 
-        <div className="mt-6">
+        <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
           <Pestanas
             pestanas={PESTANAS}
             activa={activa}
             hrefDe={(clave) => `/productos?p=${clave}`}
           />
+          {puedeEditar && (
+            <EditarProducto
+              familias={familias}
+              pisoDeMargen={pisoDeMargen}
+              puedeVerCosto={verCosto}
+              accion={crearProductoAccion}
+            />
+          )}
         </div>
 
         <div className="mt-6">
           {activa === "listas" ? (
             <TabListas vigencias={vigencias} verCosto={verCosto} ahora={ahora} />
           ) : (
-            <TabCatalogo productos={productos} verCosto={verCosto} ahora={ahora} />
+            <TabCatalogo
+              productos={productos}
+              verCosto={verCosto}
+              ahora={ahora}
+              edicion={
+                puedeEditar
+                  ? { familias, pisoDeMargen, accion: editarProductoAccion }
+                  : null
+              }
+            />
           )}
         </div>
 
@@ -151,10 +179,17 @@ function TabCatalogo({
   productos,
   verCosto,
   ahora,
+  edicion,
 }: {
   productos: Awaited<ReturnType<typeof listProductos>>;
   verCosto: boolean;
   ahora: Date;
+  /** Nulo cuando la sesión no edita catálogos: la columna no aparece. */
+  edicion: {
+    familias: { id: string; name: string }[];
+    pisoDeMargen: number;
+    accion: typeof editarProductoAccion;
+  } | null;
 }) {
   return (
     <div className="overflow-x-auto rounded-md border border-borde">
@@ -170,6 +205,7 @@ function TabCatalogo({
             {verCosto && <Th alineacion="derecha">Costo estándar</Th>}
             {verCosto && <Th alineacion="derecha">Margen</Th>}
             {verCosto && <Th alineacion="derecha">Costo actualizado</Th>}
+            {edicion && <Th alineacion="derecha">&nbsp;</Th>}
           </tr>
         </thead>
         <tbody>
@@ -216,6 +252,29 @@ function TabCatalogo({
                 {verCosto && (
                   <td className="tabular px-3 py-2.5 text-right">
                     <Antiguedad dias={dias} obsoleto={obsoleto} />
+                  </td>
+                )}
+                {edicion && (
+                  <td className="px-3 py-2.5 text-right">
+                    <EditarProducto
+                      producto={{
+                        id: p.id,
+                        sku: p.sku,
+                        name: p.name,
+                        description: p.description,
+                        familyId: p.family.id,
+                        unit: p.unit,
+                        priceModel: p.priceModel,
+                        active: p.active,
+                        listPrice: precio ? toClient(precio.listPrice) : "",
+                        standardCost:
+                          precio && "standardCost" in precio ? toClient(precio.standardCost) : null,
+                      }}
+                      familias={edicion.familias}
+                      pisoDeMargen={edicion.pisoDeMargen}
+                      puedeVerCosto={verCosto}
+                      accion={edicion.accion}
+                    />
                   </td>
                 )}
               </tr>

@@ -202,3 +202,12 @@ export async function tiposDeActividad() {
     orderBy: { name: "asc" },
   });
 }
+
+/** Las familias activas, para el selector del alta y edición de productos. */
+export async function familiasDeProducto() {
+  return prisma.productFamily.findMany({
+    where: { active: true },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}

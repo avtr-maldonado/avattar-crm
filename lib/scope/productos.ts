@@ -89,3 +89,44 @@ export async function listVigenciasDePrecio(session: Session) {
     orderBy: [{ validFrom: "desc" }, { product: { sku: "asc" } }],
   });
 }
+
+/**
+ * Un producto con su vigencia actual, para editarlo.
+ *
+ * Trae también las vigencias futuras si las hubiera: cerrar la actual sin saber
+ * que hay otra programada dejaría dos listas solapadas.
+ */
+export async function getProducto(session: Session, id: string) {
+  const verCosto = can(session, "VER_COSTO");
+  const hoy = new Date();
+
+  return prisma.product.findFirst({
+    where: { id },
+    select: {
+      id: true,
+      sku: true,
+      name: true,
+      description: true,
+      unit: true,
+      priceModel: true,
+      active: true,
+      costUpdatedAt: true,
+      family: { select: { id: true, name: true } },
+      prices: {
+        where: { validTo: { gte: hoy } },
+        select: {
+          id: true,
+          listPrice: true,
+          minPrice: true,
+          validFrom: true,
+          validTo: true,
+          ...(verCosto ? { standardCost: true } : {}),
+        },
+        orderBy: { validFrom: "asc" },
+      },
+      _count: { select: { quoteLines: true } },
+    },
+  });
+}
+
+export type ProductoEditable = NonNullable<Awaited<ReturnType<typeof getProducto>>>;
