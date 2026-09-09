@@ -39,6 +39,9 @@ export function TarjetaOportunidad({ o }: { o: DatosTarjeta }) {
   return (
     <Link
       href={`/oportunidades/${o.id}`}
+      // Los enlaces son arrastrables de nacimiento: sin esto el navegador
+      // inicia su propio arrastre de la URL y pisa el del tablero.
+      draggable={false}
       className="block rounded-md border border-borde bg-superficie-tarjeta p-3 shadow-xs transition-shadow duration-rapido ease-estandar hover:shadow-sm"
     >
       <p className="text-sm font-medium leading-snug text-texto-titulo">{o.nombre}</p>

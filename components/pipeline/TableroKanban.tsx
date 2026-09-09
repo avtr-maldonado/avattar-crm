@@ -7,6 +7,7 @@ import { avisar, avisarSiCorresponde } from "@/components/ui/avisos";
 import { Boton, EstadoVacio } from "@/components/ui/primitivas";
 import { Panel } from "@/components/ui/formulario";
 import { TarjetaOportunidad, type DatosTarjeta } from "./TarjetaOportunidad";
+import { envioDeMovimiento, type TarjetaArrastrada } from "./arrastre";
 
 /**
  * Tablero kanban · §11 P-01.
@@ -49,8 +50,6 @@ export type ColumnaKanban = {
 
 type Resultado = ResultadoAccion<{ etapa: string; gateOverride: boolean }>;
 
-type Arrastrada = { id: string; nombre: string; etapaId: string };
-
 export function TableroKanban({
   columnas,
   accionVacio,
@@ -62,12 +61,10 @@ export function TableroKanban({
   puedeMover: boolean;
   accion?: (previo: Resultado | null, form: FormData) => Promise<Resultado>;
 }) {
-  const [arrastrada, setArrastrada] = useState<Arrastrada | null>(null);
+  const [arrastrada, setArrastrada] = useState<TarjetaArrastrada | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
   /** Lo que se intentó y la compuerta detuvo, para el panel de requisitos. */
-  const [detenida, setDetenida] = useState<{ destino: ColumnaKanban; tarjeta: Arrastrada } | null>(
-    null,
-  );
+  const [detenida, setDetenida] = useState<{ destino: ColumnaKanban; tarjeta: TarjetaArrastrada } | null>(null);
 
   const [resultado, enviar, enviando] = useActionState(
     async (previo: Resultado | null, form: FormData) => {
@@ -113,29 +110,28 @@ export function TableroKanban({
   const faltantes =
     resultado && !resultado.ok && resultado.motivo === "COMPUERTA" ? resultado.problemas : [];
 
-  function soltarEn(destino: ColumnaKanban, form: HTMLFormElement | null) {
-    if (!arrastrada || arrastrada.etapaId === destino.etapaId) {
-      setArrastrada(null);
-      setSobre(null);
-      return;
-    }
-    setDetenida({ destino, tarjeta: arrastrada });
-    form?.requestSubmit();
+  /**
+   * El envío se arma **aquí**, con los valores que el soltar tiene en la mano.
+   *
+   * La versión anterior los guardaba en estado y enviaba un formulario con
+   * campos ocultos en el mismo tick: React todavía no los había actualizado, así
+   * que viajaban vacíos y el arrastre no hacía nada. Ver `arrastre.ts`.
+   */
+  function soltarEn(destino: ColumnaKanban) {
+    const datos = envioDeMovimiento(arrastrada, destino.etapaId);
+    const tarjeta = arrastrada;
     setArrastrada(null);
     setSobre(null);
+    if (!datos || !tarjeta) return;
+
+    // Se guarda para poder nombrar el destino en el panel de requisitos y para
+    // que «Mover de todos modos» sepa a dónde iba.
+    setDetenida({ destino, tarjeta });
+    enviar(datos);
   }
 
   return (
     <>
-      {/*
-        Un solo formulario para todo el tablero: el destino y la tarjeta viajan
-        en campos ocultos que el soltar acaba de fijar.
-      */}
-      <form action={enviar} id="mover-etapa">
-        <input type="hidden" name="opportunityId" value={detenida?.tarjeta.id ?? ""} />
-        <input type="hidden" name="toStageId" value={detenida?.destino.etapaId ?? ""} />
-      </form>
-
       {/* Un solo scroll horizontal para todo el tablero: si cada columna
           tuviera el suyo, arrastrar una tarjeta entre etapas sería imposible. */}
       <div className="flex gap-4 overflow-x-auto pb-4">
@@ -145,13 +141,16 @@ export function TableroKanban({
             aria-label={`Etapa ${c.nombre}`}
             onDragOver={(e) => {
               if (!arrastrable || !arrastrada) return;
+              // Sin `preventDefault` el navegador no considera la zona un
+              // destino válido y nunca dispara `drop`.
               e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
               setSobre(c.etapaId);
             }}
             onDragLeave={() => setSobre((s) => (s === c.etapaId ? null : s))}
             onDrop={(e) => {
               e.preventDefault();
-              soltarEn(c, e.currentTarget.ownerDocument.getElementById("mover-etapa") as HTMLFormElement | null);
+              soltarEn(c);
             }}
             className={clsx(
               "flex w-72 shrink-0 flex-col rounded-md transition-colors duration-rapido ease-estandar",
@@ -184,9 +183,14 @@ export function TableroKanban({
                   <div
                     key={o.id}
                     draggable={arrastrable && !enviando}
-                    onDragStart={() =>
-                      setArrastrada({ id: o.id, nombre: o.nombre, etapaId: c.etapaId })
-                    }
+                    onDragStart={(e) => {
+                      setArrastrada({ id: o.id, nombre: o.nombre, etapaId: c.etapaId });
+                      // Firefox no inicia el arrastre si nadie pone datos, y
+                      // `move` es lo que hace que el cursor diga que se mueve y
+                      // no que se copia.
+                      e.dataTransfer.setData("text/plain", o.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
                     onDragEnd={() => {
                       setArrastrada(null);
                       setSobre(null);
@@ -231,11 +235,15 @@ export function TableroKanban({
               {detenida?.destino.gateMode === "ADVERTENCIA" && (
                 <Boton
                   variante="secundario"
-                  type="submit"
-                  form="mover-etapa"
-                  name="omitirCompuerta"
-                  value="true"
                   disabled={enviando}
+                  onClick={() => {
+                    const datos = envioDeMovimiento(
+                      detenida.tarjeta,
+                      detenida.destino.etapaId,
+                      { omitirCompuerta: true },
+                    );
+                    if (datos) enviar(datos);
+                  }}
                 >
                   Mover de todos modos
                 </Boton>
