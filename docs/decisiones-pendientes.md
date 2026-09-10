@@ -543,3 +543,69 @@ La matriz tampoco: la jerarquía matriz-filial es `F-402`, Fase 2.
 **Para confirmar con el Director junto con `Q-01`, `Q-13` y `Q-14`**: las cuatro
 son la misma pregunta —quién ve y quién toca qué— y conviene resolverlas en la
 misma conversación.
+
+---
+
+## 13. MEDDIC, hitos y documentos (9 de septiembre de 2026)
+
+Al habilitar las tres últimas pestañas del detalle aparecieron cuatro cosas que
+el spec no resuelve. Ninguna se inventó en el código.
+
+### `Q-16` · Quitar un documento no deja rastro, y apaga una compuerta
+
+Un contrato o una orden de compra es lo que satisface la compuerta
+`CONTRATO_O_OC_CARGADO` de la etapa de Cierre. Quitarlo la apaga. Hoy eso no se
+audita, y no por descuido:
+
+- `INV-15` **no cubre `Document`.** §6 acota el borrado lógico a Organization,
+  Person, Opportunity, Activity y User. La fila se borra en duro.
+- `INV-09` enumera las acciones sensibles y quitar un documento no está entre
+  ellas, así que la unión `AuditAction` de `lib/audit/index.ts` no la admite.
+
+Se dejó como el spec lo dice, en vez de ampliar el invariante por cuenta propia.
+
+**El efecto colateral:** el archivo se queda en el bucket sin la fila que
+guardaba su `storageKey`. Queda huérfano —recuperable solo a mano, por alguien
+con acceso a Storage— y consume espacio para siempre.
+
+**Costo de cambiarlo:** dos líneas. Agregar `"QUITAR_DOCUMENTO"` a la unión de
+`lib/audit/index.ts` y envolver el `deleteMany` de `quitarDocumento` en
+`auditedTransaction`. Si además se quiere recuperable, `Document` necesita
+`deletedAt` y entra a la lista de §6.
+
+**Dónde vive:** `lib/domain/document.ts`.
+
+### `Q-17` · El bucket `documentos` está en público
+
+Verificado el 9 de septiembre de 2026 contra la API de Storage: `public: true`,
+sin límite de tamaño y sin restricción de tipos. **Cualquiera con la URL
+descarga el archivo sin autenticarse**, y una URL que se filtra una vez —un
+correo reenviado, un historial, una captura— es acceso permanente a un contrato.
+
+La descarga se construyó con **URL firmada de vida corta** (diez minutos,
+emitida en el servidor solo para quien alcanza la oportunidad), que es lo
+correcto con el bucket privado. Con el bucket público el código sigue siendo
+correcto pero la protección no sirve: la ruta directa también responde.
+
+**Se apaga en** Supabase → Storage → `documentos` → Public bucket. No es un
+cambio de código.
+
+### Los pesos MEDDIC se leen del pipeline, con respaldo
+
+`INV-05` prohíbe umbrales en el código, y §7 dice que los pesos se configuran
+por pipeline. `MeddicWeight` puede estar vacío para un pipeline recién creado.
+Cuando lo está se usan los pesos por omisión en vez de fallar: un puntaje
+calculado con los pesos de omisión es más útil que una pantalla rota, y el
+único efecto es que los seis componentes pesan lo mismo.
+
+**Dónde vive:** `pesosMeddicDe` en `lib/scope/pipelines.ts`, y el respaldo en
+`pesosDelPipeline` de `app/(app)/oportunidades/[id]/tabs.acciones.ts`.
+
+### El cuadre de hitos distingue «no hay neto» de «cuadra en cero»
+
+`RN-06` cuadra los hitos contra el neto de la cotización **congelada**. Sin
+cotización congelada no hay total que repartir, y eso no es lo mismo que estar
+cuadrado: son dos mensajes distintos en la pestaña, porque llevan a dos
+acciones distintas —congelar una cotización, o repartir lo que falta—.
+
+**Dónde vive:** `cuadreDeHitos` en `lib/domain/milestone.ts`.

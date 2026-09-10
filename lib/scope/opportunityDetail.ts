@@ -141,6 +141,9 @@ export async function getOpportunityDetail(session: Session, id: string) {
           name: true,
           version: true,
           createdAt: true,
+          // Para mostrar el peso en la lista; la ruta NO se serializa: la
+          // descarga se pide por acción, que emite una URL firmada.
+          sizeBytes: true,
           type: { select: { id: true, name: true, isContract: true } },
           uploadedBy: { select: { name: true, initials: true } },
         },

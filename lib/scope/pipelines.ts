@@ -84,3 +84,18 @@ export function pipelinePorOmision(
     pipelines[0]
   );
 }
+
+/**
+ * Los pesos MEDDIC del pipeline, que suman 100 · `INV-05` y `Q-08`.
+ *
+ * Se leen de la base porque «si el negocio decide que el decisor económico pesa
+ * más, se cambia sin desplegar código». Si el pipeline no los tiene
+ * configurados devuelve una lista vacía, y quien llama decide: un puntaje con
+ * los pesos por omisión es más útil que una pantalla rota.
+ */
+export async function pesosMeddicDe(pipelineId: string) {
+  return prisma.meddicWeight.findMany({
+    where: { pipelineId },
+    select: { component: true, weight: true },
+  });
+}

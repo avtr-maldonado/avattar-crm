@@ -12,6 +12,21 @@ import { listProductos } from "@/lib/scope/productos";
 import { calcularLinea, lineasBajoElPiso } from "@/lib/domain/quote";
 import { TablaDeCotizacion, type LineaCalculada } from "@/components/cotizacion/TablaDeCotizacion";
 import { AbrirCotizacion } from "@/components/cotizacion/AbrirCotizacion";
+import { PanelMeddic, type ComponenteMeddic } from "@/components/oportunidad/PanelMeddic";
+import { PanelHitos, type HitoDeLista } from "@/components/oportunidad/PanelHitos";
+import { PanelDocumentos, type DocumentoDeLista } from "@/components/oportunidad/PanelDocumentos";
+import { NOMBRE_COMPONENTE } from "@/lib/domain/meddic";
+import { cuadreDeHitos, porcentajeDelNeto } from "@/lib/domain/milestone";
+import { sum } from "@/lib/money";
+import {
+  descargarDocumentoAccion,
+  guardarHitoAccion,
+  guardarMeddicAccion,
+  marcarHitoAccion,
+  quitarDocumentoAccion,
+  quitarHitoAccion,
+  subirDocumentoAccion,
+} from "./tabs.acciones";
 import {
   abrirCotizacionAccion,
   congelarAccion,
@@ -87,6 +102,11 @@ export default async function DetalleOportunidadPage({
   // dos viajes; medido contra us-east-1, cada uno son ~287 ms de pura red
   // (docs/latencia.md).
   const puedeReasignar = can(session, "VER_OPORTUNIDADES_OFICINA");
+  // Q-13 · el propietario o quien tenga alcance de oficina. Una cerrada no se
+  // toca: reabrirla es de Administración (RN-18).
+  const puedeEditarDetalle =
+    oportunidad.status === "ABIERTA" &&
+    (oportunidad.owner.id === session.userId || puedeReasignar);
 
   const [politica, actividades, catalogos, tiposActividad, propietarios, cotizaciones] = await Promise.all([
     getCommercialPolicy(oportunidad.pipeline.countryCode),
@@ -108,14 +128,17 @@ export default async function DetalleOportunidadPage({
     { clave: "resumen", etiqueta: "Resumen" },
     { clave: "actividades", etiqueta: "Actividades", contador: actividades.length },
     { clave: "cotizacion", etiqueta: "Cotización", contador: cotizaciones.length },
-    { clave: "meddic", etiqueta: "MEDDIC", llegaEn: "E3, MEDDIC y cierre" },
-    { clave: "hitos", etiqueta: "Hitos", llegaEn: "E3, MEDDIC y cierre" },
     {
-      clave: "documentos",
-      etiqueta: "Documentos",
-      contador: oportunidad.documents.length,
-      llegaEn: "E2, carga de archivos",
+      clave: "meddic",
+      etiqueta: "MEDDIC",
+      // Cuántos de los seis están evaluados, NO el puntaje: en el resto de la
+      // aplicación esta píldora cuenta cosas, y «84» ahí se leería como 84
+      // elementos. El puntaje se muestra grande y con color dentro de la
+      // pestaña, que es donde significa algo.
+      contador: oportunidad.meddic.filter((m) => m.status !== "NO_EVALUADO").length,
     },
+    { clave: "hitos", etiqueta: "Hitos", contador: oportunidad.milestones.length },
+    { clave: "documentos", etiqueta: "Documentos", contador: oportunidad.documents.length },
   ];
 
   const banderas = computeRiskFlags(oportunidad, oportunidad.stage, politica, new Date());
@@ -150,7 +173,17 @@ export default async function DetalleOportunidadPage({
         </div>
 
         <div className="mt-6">
-          {pestanaActiva === "cotizacion" ? (
+          {pestanaActiva === "meddic" ? (
+            <TabMeddic o={oportunidad} politica={politica} puedeEditar={puedeEditarDetalle} />
+          ) : pestanaActiva === "hitos" ? (
+            <TabHitos o={oportunidad} puedeEditar={puedeEditarDetalle} />
+          ) : pestanaActiva === "documentos" ? (
+            <TabDocumentos
+              o={oportunidad}
+              tipos={catalogos.tiposDocumento}
+              puedeEditar={puedeEditarDetalle}
+            />
+          ) : pestanaActiva === "cotizacion" ? (
             <TabCotizacion
               session={session}
               oportunidad={oportunidad}
@@ -649,6 +682,154 @@ const ETIQUETA_ESTADO_COTIZACION: Record<string, string> = {
   CONGELADA: "congelada",
   REEMPLAZADA: "reemplazada",
 };
+
+// ───────────────────────────────────────────────────────────────── MEDDIC
+
+/** §2.1 · solo estos dos se anclan a una persona real del comité. */
+const ANCLAN_PERSONA = new Set(["DECISOR_ECONOMICO", "CAMPEON"]);
+
+const ORDEN_MEDDIC = [
+  "METRICAS",
+  "DECISOR_ECONOMICO",
+  "CRITERIOS_DECISION",
+  "PROCESO_DECISION",
+  "DOLOR_IDENTIFICADO",
+  "CAMPEON",
+] as const;
+
+function TabMeddic({
+  o,
+  politica,
+  puedeEditar,
+}: {
+  o: DetalleOportunidad;
+  politica: Politica;
+  puedeEditar: boolean;
+}) {
+  const porComponente = new Map(o.meddic.map((m) => [m.component, m]));
+
+  const componentes: ComponenteMeddic[] = ORDEN_MEDDIC.map((clave) => {
+    const guardado = porComponente.get(clave);
+    return {
+      clave,
+      nombre: NOMBRE_COMPONENTE[clave],
+      estado: guardado?.status ?? "NO_EVALUADO",
+      evidencia: guardado?.evidence ?? null,
+      personaId: guardado?.person?.id ?? null,
+      personaNombre: guardado?.person?.name ?? null,
+      anclaPersona: ANCLAN_PERSONA.has(clave),
+    };
+  });
+
+  return (
+    <PanelMeddic
+      opportunityId={o.id}
+      puntaje={o.meddicScore ?? 0}
+      componentes={componentes}
+      personas={o.organization.people.map((p) => ({
+        id: p.id,
+        name: p.name,
+        jobTitle: p.jobTitle,
+      }))}
+      minimos={{
+        cierre: Number(politica.meddicMinToClosing),
+        ganada: Number(politica.meddicMinToWin),
+        compromiso: Number(politica.meddicMinToCommit),
+      }}
+      puedeEditar={puedeEditar}
+      accion={guardarMeddicAccion}
+    />
+  );
+}
+
+// ────────────────────────────────────────────────────────────────── Hitos
+
+function TabHitos({ o, puedeEditar }: { o: DetalleOportunidad; puedeEditar: boolean }) {
+  // RN-06 · se cuadra contra el neto de la cotización CONGELADA. Sin ella no
+  // hay total que repartir, y eso es distinto de «cuadra en cero».
+  const congelada = o.quotes[0];
+  const neto = congelada?.netSubtotal ?? null;
+
+  const montos = o.milestones.map((h) => h.amount);
+  const r = cuadreDeHitos(montos, neto);
+  const asignado = sum(montos);
+
+  const hitos: HitoDeLista[] = o.milestones.map((h) => ({
+    id: h.id,
+    descripcion: h.description,
+    vence: FECHA.format(h.dueDate),
+    venceISO: h.dueDate.toISOString().slice(0, 10),
+    monto: toClient(h.amount),
+    montoFormateado: formatUSD(h.amount),
+    porcentaje: neto ? `${porcentajeDelNeto(h.amount, neto).toFixed(1)} %` : "—",
+    cumplido: h.status === "CUMPLIDO",
+  }));
+
+  return (
+    <PanelHitos
+      opportunityId={o.id}
+      hitos={hitos}
+      neto={neto ? toClient(neto) : null}
+      netoFormateado={neto ? formatUSD(neto) : null}
+      cuadre={{
+        cuadra: r.cuadra,
+        mensaje: r.mensaje,
+        asignado: formatUSD(asignado),
+        porcentaje: neto && !neto.isZero() ? Number(asignado.div(neto).times(100)) : 0,
+      }}
+      puedeEditar={puedeEditar}
+      acciones={{
+        guardar: guardarHitoAccion,
+        quitar: quitarHitoAccion,
+        marcar: marcarHitoAccion,
+      }}
+    />
+  );
+}
+
+// ───────────────────────────────────────────────────────────── Documentos
+
+/** Bytes a algo legible. 1 048 576 no le dice nada a nadie. */
+function tamanoLegible(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function TabDocumentos({
+  o,
+  tipos,
+  puedeEditar,
+}: {
+  o: DetalleOportunidad;
+  tipos: { id: string; name: string }[];
+  puedeEditar: boolean;
+}) {
+  const documentos: DocumentoDeLista[] = o.documents.map((d) => ({
+    id: d.id,
+    nombre: d.name,
+    tipo: d.type.name,
+    esContrato: d.type.isContract,
+    version: d.version,
+    tamano: tamanoLegible(d.sizeBytes),
+    subidoPor: d.uploadedBy.name,
+    cuando: FECHA.format(d.createdAt),
+  }));
+
+  return (
+    <PanelDocumentos
+      opportunityId={o.id}
+      documentos={documentos}
+      tipos={tipos}
+      puedeEditar={puedeEditar}
+      acciones={{
+        subir: subirDocumentoAccion,
+        descargar: descargarDocumentoAccion,
+        quitar: quitarDocumentoAccion,
+      }}
+    />
+  );
+}
 
 function TabActividades({
   actividades,

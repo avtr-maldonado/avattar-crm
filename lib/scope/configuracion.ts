@@ -178,7 +178,7 @@ export async function usuariosPorRol() {
  * aquí sería pagar cinco consultas de más en la pantalla que más se abre.
  */
 export async function catalogosParaAlta() {
-  const [origenes, rolesComite] = await Promise.all([
+  const [origenes, rolesComite, tiposDocumento] = await Promise.all([
     prisma.opportunitySource.findMany({
       where: { active: true },
       select: { id: true, name: true },
@@ -189,9 +189,16 @@ export async function catalogosParaAlta() {
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    // Para la pestaña de documentos: `isContract` es lo que satisface la
+    // compuerta CONTRATO_O_OC_CARGADO.
+    prisma.documentType.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
-  return { origenes, rolesComite };
+  return { origenes, rolesComite, tiposDocumento };
 }
 
 /** Los tipos de actividad activos, para el formulario de registro (§12.4). */
