@@ -42,3 +42,9 @@ red descontada**, entonces sí hay trabajo de consulta que hacer.
 
 Las pruebas de integración llevan `testTimeout: 20_000` en `vitest.config.ts`
 por esta razón, no porque algo esté mal.
+
+## Y la máquina
+
+Todo lo de arriba es red. Lo que hace lento a `pnpm dev` en la laptop —OneDrive
+en la ruta del repo, el antivirus por archivo, webpack sin Turbopack, y los
+viajes en serie por navegación— está medido aparte en `latencia-dev.md`.
